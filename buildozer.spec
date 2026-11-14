@@ -6,9 +6,9 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf,ttc,json,csv
 source.include_patterns = static/fonts/*.ttf,static/*.png
 version = 18.0
-requirements = python3,kivy,pyjnius==1.5.0,plyer,pillow,certifi
+requirements = python3,kivy,pyjnius,plyer,pillow,certifi
 
-# ✅ Ключевая строка для стабильной сборки на GitHub Actions
+# ✅ КРИТИЧЕСКИ ВАЖНО: берем самую свежую ветку сборщика
 p4a.branch = develop
 
 orientation = portrait
