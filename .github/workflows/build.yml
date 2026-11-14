@@ -23,9 +23,10 @@ jobs:
             pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
             cmake libffi-dev libssl-dev
             
-      - name: Install Buildozer
+      - name: Install Buildozer and Cython
         run: |
           pip install --upgrade pip
+          # Обновляем Cython до актуальной версии, чтобы не было ошибок сборки
           pip install buildozer cython==0.29.36
           
       - name: Build APK
