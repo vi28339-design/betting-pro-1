@@ -7,10 +7,8 @@ source.include_exts = py,png,jpg,kv,atlas,ttf,ttc,json,csv
 source.include_patterns = static/fonts/*.ttf,static/*.png
 version = 18.0
 
-# ✅ Защита от несовместимых версий jnius
-requirements = python3,kivy,jnius>=1.4.0,plyer,pillow,certifi
+requirements = python3,kivy,plyer,pillow,certifi
 
-# ✅ Стабильная ветка
 p4a.branch = master
 
 orientation = portrait
@@ -20,10 +18,7 @@ android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,VIBR
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
-
-# ✅ ТОЛЬКО 64-битная архитектура (убирает зависание на libffi)
 android.archs = arm64-v8a
-
 android.allow_backup = True
 android.accept_sdk_license = True
 
