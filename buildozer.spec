@@ -8,8 +8,8 @@ source.include_patterns = static/fonts/*.ttf,static/*.png
 version = 18.0
 requirements = python3,kivy,pyjnius,plyer,pillow,certifi
 
-# ✅ Убрали p4a.branch = develop. Используем стабильный master по умолчанию.
-# ✅ Убрали фиксацию pyjnius, чтобы p4a сам выбрал рабочую версию.
+# ✅ Стабильная ветка, без экспериментов
+p4a.branch = master
 
 orientation = portrait
 fullscreen = 0
@@ -17,11 +17,8 @@ icon.filename = %(source.dir)s/static/icon.png
 android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,VIBRATE,RECORD_AUDIO,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS
 android.api = 33
 android.minapi = 21
-
-# ✅ Официально рекомендуемый NDK для текущего p4a [citation:9]
 android.ndk = 25b
-
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
 android.allow_backup = True
 android.accept_sdk_license = True
 
