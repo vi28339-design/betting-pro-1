@@ -184,11 +184,7 @@ class Кнопка(Button):
         self.bind(on_press=self._нажатие)
 
     def _нажатие(self, *a):
-        try:
-            from plyer import vibrator
-            vibrator.vibrate(0.03)
-        except Exception:
-            pass
+        pass  # Вибрация убрана (требует pyjnius)
 
 
 class ПрогрессБар(Widget):
