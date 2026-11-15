@@ -26,8 +26,9 @@ jobs:
       - name: Install Buildozer
         run: |
           pip install --upgrade pip
-          # ✅ ФИКС: Жестко фиксируем Cython 0.29.33, так как это проверенная версия для Kivy
-          pip install buildozer cython==0.29.33
+          pip install buildozer cython==0.29.36
+          # ✅ Устанавливаем jnius отдельно, как советуют в рабочем примере
+          pip install "jnius>=1.4.0"
 
       - name: Cache Buildozer global directory
         uses: actions/cache@v4
@@ -37,6 +38,7 @@ jobs:
 
       - name: Build APK
         run: |
+          # ✅ Чистим локальный кэш, чтобы не тащить битые файлы
           rm -rf .buildozer
           buildozer -v android debug
 
