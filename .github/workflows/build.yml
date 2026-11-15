@@ -27,8 +27,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install buildozer cython==0.29.36
-          # ✅ Устанавливаем jnius отдельно, как советуют в рабочем примере
-          pip install "jnius>=1.4.0"
+          # ✅ ИСПРАВЛЕНО: правильное имя пакета — pyjnius, а не jnius
+          pip install "pyjnius>=1.4.0"
 
       - name: Cache Buildozer global directory
         uses: actions/cache@v4
@@ -38,7 +38,6 @@ jobs:
 
       - name: Build APK
         run: |
-          # ✅ Чистим локальный кэш, чтобы не тащить битые файлы
           rm -rf .buildozer
           buildozer -v android debug
 
