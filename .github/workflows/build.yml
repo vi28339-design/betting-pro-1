@@ -1,4 +1,4 @@
-name: Build Kivy APK with Cache
+name: Build Kivy APK
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
             -v "$GITHUB_WORKSPACE/buildozer-cache":/home/user/.buildozer \
-            kivy/buildozer:1.5.0 \
+            kivy/buildozer:latest \
             buildozer -v android debug
 
       - name: Upload APK
