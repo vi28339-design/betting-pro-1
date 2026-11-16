@@ -5,7 +5,7 @@ package.domain = com.bettingpro.app
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 1.0
-requirements = python3,kivy==2.3.0
+requirements = python3,kivy
 p4a.branch = master
 orientation = portrait
 fullscreen = 0
