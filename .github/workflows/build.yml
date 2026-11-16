@@ -13,24 +13,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Buildozer global directory
-        uses: actions/cache@v4
-        with:
-          path: buildozer-cache
-          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            buildozer-global-
-
-      - name: Prepare cache dir with writable permissions
-        run: |
-          mkdir -p buildozer-cache
-          chmod -R 777 buildozer-cache
-
       - name: Build with Buildozer
         run: |
           docker run --rm \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
-            -v "$GITHUB_WORKSPACE/buildozer-cache":/home/user/.buildozer \
             kivy/buildozer:latest \
             -v android debug
 
