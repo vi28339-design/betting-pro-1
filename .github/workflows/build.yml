@@ -7,16 +7,26 @@ on:
 
 jobs:
   build-android:
-    name: Build for Android
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build with Buildozer
+      - name: Add swap to avoid OOM kill
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+      - name: Build with Buildozer (low memory mode)
         run: |
           docker run --rm \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
+            -e P4A_CCACHE=0 \
+            -e _JAVA_OPTIONS="-Xmx2g -XX:MaxMetaspaceSize=1g" \
+            --memory=12g \
             kivy/buildozer:latest \
             -v android debug
 
