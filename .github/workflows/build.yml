@@ -37,5 +37,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: betting-pro-apk
+          name: bettingpro-apk
           path: bin/*.apk
