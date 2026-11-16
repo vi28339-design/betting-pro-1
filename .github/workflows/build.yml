@@ -12,26 +12,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Ensure swap space (avoid OOM)
-        run: |
-          if ! swapon --show | grep -q '/swapfile'; then
-            if [ -f /swapfile ]; then
-              sudo swapoff /swapfile 2>/dev/null || true
-              sudo rm -f /swapfile
-            fi
-            sudo fallocate -l 8G /swapfile
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile
-          fi
-          free -h
-
-      - name: Build with Buildozer (low memory mode)
+      - name: Build with Buildozer
         run: |
           docker run --rm \
             -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
-            -e P4A_CCACHE=0 \
-            -e _JAVA_OPTIONS="-Xmx2g -XX:MaxMetaspaceSize=1g" \
             kivy/buildozer:latest \
             -v android debug
 
