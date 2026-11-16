@@ -13,27 +13,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ✅ ШАГ 1: Кэшируем глобальную папку Buildozer (SDK и NDK)
-      # Это самый важный шаг для ускорения. Ключ кэша зависит от файла buildozer.spec.
       - name: Cache Buildozer global directory
         uses: actions/cache@v4
         with:
-          path: .buildozer_global
+          path: buildozer-cache
           key: buildozer-global-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
             buildozer-global-
 
-      # ✅ ШАГ 2: Собираем APK с помощью готового экшена
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
-        with:
-          command: buildozer -v android debug
-          buildozer_version: stable
+      - name: Prepare cache dir with writable permissions
+        run: |
+          mkdir -p buildozer-cache
+          chmod -R 777 buildozer-cache
 
-      # ✅ ШАГ 3: Загружаем готовый APK
+      - name: Build with Buildozer
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/home/user/hostcwd \
+            -v "$GITHUB_WORKSPACE/buildozer-cache":/home/user/.buildozer \
+            kivy/buildozer:1.5.0 \
+            buildozer -v android debug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: betting-pro-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk
