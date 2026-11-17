@@ -1,6 +1,5 @@
 import datetime
 import math
-import os
 import sqlite3
 
 from kivy.app import App
@@ -27,23 +26,24 @@ FONT_BOLD = "Roboto"
 THEMES = {
     "light": {
         "bg": rgba("#F2F2F7"), "card": rgba("#FFFFFF"), "field": rgba("#FFFFFF"),
-        "separator": rgba(0.78, 0.78, 0.80, 1), "accent": rgba("#007AFF"),
+        "sep": rgba(0.78, 0.78, 0.80, 1), "accent": rgba("#007AFF"),
         "label": rgba("#1C1C1E"), "secondary": rgba("#8E8E93"),
         "tabtext": rgba("#8E8E93"), "tabactive": rgba("#007AFF"),
         "green": rgba("#34C759"), "red": rgba("#FF3B30"),
+        "big": rgba("#1C1C1E"),
     },
     "dark": {
         "bg": rgba("#000000"), "card": rgba("#1C1C1E"), "field": rgba("#2C2C2E"),
-        "separator": rgba("#38383A"), "accent": rgba("#0A84FF"),
+        "sep": rgba("#38383A"), "accent": rgba("#0A84FF"),
         "label": rgba("#FFFFFF"), "secondary": rgba("#8E8E93"),
         "tabtext": rgba("#8E8E93"), "tabactive": rgba("#0A84FF"),
         "green": rgba("#30D158"), "red": rgba("#FF453A"),
+        "big": rgba("#FFFFFF"),
     },
 }
 
 SPORTS = ["Хоккей", "Футбол", "Теннис", "Настольный теннис"]
-STRATEGIES = ["Тотал ТБ", "Тотал ТМ", "Двойной шанс 1X", "Двойной шанс X2",
-              "Победа фаворита", "Value (EV)", "Келли-критерий", "Обе забьют"]
+MARKETS = ["Исход", "Тотал", "Комби"]
 
 DB_PATH = "betting.db"
 
@@ -54,21 +54,18 @@ def get_db():
 
 def init_db():
     c = get_db()
-    c.executescript("""
-    CREATE TABLE IF NOT EXISTS history (
+    c.executescript("""CREATE TABLE IF NOT EXISTS history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sport TEXT, strategy TEXT, line REAL, cf REAL,
-      prob REAL, ev REAL, stake REAL,
-      result TEXT, created TEXT
-    );""")
+      sport TEXT, market TEXT, strategy TEXT, line REAL, cf REAL,
+      prob REAL, ev REAL, stake REAL, result TEXT, created TEXT);""")
     c.commit(); c.close()
 
 
-def save_bet(sport, strategy, line, cf, prob, ev, stake):
+def save_bet(sport, market, strategy, line, cf, prob, ev, stake):
     c = get_db()
-    c.execute("INSERT INTO history (sport,strategy,line,cf,prob,ev,stake,result,created) "
-              "VALUES (?,?,?,?,?,?,?,?,?)",
-              (sport, strategy, line, cf, prob, ev, stake, None,
+    c.execute("INSERT INTO history (sport,market,strategy,line,cf,prob,ev,stake,result,created) "
+              "VALUES (?,?,?,?,?,?,?,?,?,?)",
+              (sport, market, strategy, line, cf, prob, ev, stake, None,
                datetime.datetime.now().strftime("%d.%m %H:%M")))
     c.commit(); c.close()
 
@@ -81,15 +78,11 @@ def get_history(limit=200):
 
 
 def set_result(bid, result):
-    c = get_db()
-    c.execute("UPDATE history SET result=? WHERE id=?", (result, bid))
-    c.commit(); c.close()
+    c = get_db(); c.execute("UPDATE history SET result=? WHERE id=?", (result, bid)); c.commit(); c.close()
 
 
 def clear_history():
-    c = get_db()
-    c.execute("DELETE FROM history")
-    c.commit(); c.close()
+    c = get_db(); c.execute("DELETE FROM history"); c.commit(); c.close()
 
 
 class Card(BoxLayout):
@@ -102,8 +95,7 @@ class Card(BoxLayout):
         self.bind(pos=self._upd, size=self._upd)
 
     def _upd(self, *a):
-        self.rect.pos = self.pos
-        self.rect.size = self.size
+        self.rect.pos = self.pos; self.rect.size = self.size
 
     def set_theme(self, name):
         self.theme = name
@@ -116,18 +108,16 @@ class Card(BoxLayout):
 class Field(BoxLayout):
     def __init__(self, label, placeholder, **kw):
         super().__init__(orientation="vertical", spacing=dp(6), **kw)
-        self.theme = "light"
-        self.cap = Label(text=label, font_size=sp(14), halign="left", size_hint_y=None, height=sp(18))
+        self.cap = Label(text=label, font_size=sp(14), halign="left", size_hint_y=None, height=sp(18),
+                         color=THEMES["light"]["secondary"])
         self.cap.bind(size=lambda *a: setattr(self.cap, "text_size", (self.cap.width, None)))
         self.txt = TextInput(text="", hint_text=placeholder, multiline=False, font_size=sp(16),
                              padding=[G_12, G_12], height=TOUCH, size_hint_y=None,
                              background_color=(1, 1, 1, 1), background_normal="")
         self.add_widget(self.cap)
         self.add_widget(self.txt)
-        self.set_theme("light")
 
     def set_theme(self, name):
-        self.theme = name
         c = THEMES[name]
         self.cap.color = c["secondary"]
         self.txt.color = c["label"]
@@ -140,117 +130,182 @@ class MainScreen(BoxLayout):
         super().__init__(orientation="vertical", **kw)
         self.theme = "light"
         self.tabs = {}
+        self.current_tab = "anchor"
 
-        header = BoxLayout(size_hint_y=None, height=dp(52), padding=[MARGIN, 0, G_16, 0])
-        self.large_title = Label(text="Ставки", font_size=sp(32), bold=True, halign="left", size_hint_x=1)
-        self.large_title.bind(size=lambda *a: setattr(self.large_title, "text_size", (self.large_title.width, None)))
-        self.theme_switch = Switch(active=False, size_hint=(None, None), size=(dp(51), dp(31)))
-        self.theme_switch.bind(active=self.on_theme)
-        header.add_widget(self.large_title)
-        header.add_widget(self.theme_switch)
+        # ---- Шапка: имя + баланс + настройки ----
+        header = BoxLayout(size_hint_y=None, height=dp(56), padding=[MARGIN, 0, G_16, 0], spacing=G_8)
+        self.title = Label(text="Betting PRO", font_size=sp(24), bold=True, halign="left", size_hint_x=1)
+        self.title.bind(size=lambda *a: setattr(self.title, "text_size", (self.title.width, None)))
+        self.balance_lbl = Label(text="💰 10 000", font_size=sp(18), bold=True, halign="right",
+                                 size_hint_x=None, width=dp(120))
+        self.settings_btn = Button(text="⚙", font_size=sp(20), size_hint=(None, None),
+                                   size=(TOUCH, TOUCH), background_normal="")
+        self.settings_btn.bind(on_press=lambda x: self.go_settings())
+        header.add_widget(self.title)
+        header.add_widget(self.balance_lbl)
+        header.add_widget(self.settings_btn)
         self.add_widget(header)
 
-        self.panel_analyze = BoxLayout(orientation="vertical", padding=[0, 0, 0, 0])
-        self.panel_history = BoxLayout(orientation="vertical", padding=[0, 0, 0, 0], opacity=0, disabled=True)
-        self.panel_stats = BoxLayout(orientation="vertical", padding=[0, 0, 0, 0], opacity=0, disabled=True)
+        # ---- Сегменты рынков ----
+        seg = BoxLayout(size_hint_y=None, height=dp(44), padding=[MARGIN, 0, MARGIN, 0], spacing=G_8)
+        self.market_btns = {}
+        for m in MARKETS:
+            b = Button(text=m, font_size=sp(15), size_hint_x=1, background_normal="")
+            b.bind(on_press=self.on_market)
+            self.market_btns[m] = b
+            seg.add_widget(b)
+        self.add_widget(seg)
 
-        scroll = ScrollView(size_hint=(1, 1))
-        content = BoxLayout(orientation="vertical", size_hint_y=None, spacing=G_16, padding=[0, 0, 0, G_16])
-        content.bind(minimum_height=content.setter("height"))
+        # ---- Панели ----
+        self.panel_anchor = BoxLayout()
+        self.panel_history = BoxLayout(opacity=0, disabled=True)
+        self.panel_stats = BoxLayout(opacity=0, disabled=True)
+        self.panel_settings = BoxLayout(opacity=0, disabled=True)
 
-        card_sel = Card(orientation="vertical")
-        card_sel.add_widget(self._sec("Настройки"))
-        row = BoxLayout(size_hint_y=None, height=TOUCH, spacing=G_12)
-        self.sport = self._spin(SPORTS)
-        self.strategy = self._spin(STRATEGIES)
-        self.sport.bind(text=self.on_sport_change)
-        row.add_widget(self.sport)
-        row.add_widget(self.strategy)
-        card_sel.add_widget(row)
-        content.add_widget(card_sel)
+        self._build_anchor()
+        self._build_history()
+        self._build_stats()
+        self._build_settings()
 
-        card_f = Card(orientation="vertical")
-        card_f.add_widget(self._sec("Параметры"))
-        self.f_k1 = Field("Команда 1: очки/забитые", "5.2")
-        self.f_k2 = Field("Команда 2: очки/забитые", "4.8")
-        self.f_line = Field("Линия / гандикап", "9.5")
-        self.f_cf = Field("Коэффициент БК", "1.90")
-        for f in (self.f_k1, self.f_k2, self.f_line, self.f_cf):
-            card_f.add_widget(f)
-        content.add_widget(card_f)
-
-        self.analyze_btn = Button(text="Анализировать и сохранить", font_size=sp(16), bold=True,
-                                  size_hint_y=None, height=TOUCH, background_normal="",
-                                  background_color=THEMES[self.theme]["accent"], color=(1, 1, 1, 1))
-        self.analyze_btn.bind(on_press=self.calculate)
-        content.add_widget(self.analyze_btn)
-
-        self.result_card = Card(orientation="vertical")
-        self.result = Label(text="Готов к анализу.", font_size=sp(16), halign="center",
-                            valign="middle", size_hint_y=None, height=dp(140))
-        self.result.bind(size=lambda *a: setattr(self.result, "text_size", (self.result.width, None)))
-        self.result_card.add_widget(self.result)
-        content.add_widget(self.result_card)
-
-        scroll.add_widget(content)
-        self.panel_analyze.add_widget(scroll)
-
-        self.hist_scroll = ScrollView(size_hint=(1, 1))
-        self.hist_list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=2)
-        self.hist_list.bind(minimum_height=self.hist_list.setter("height"))
-        self.hist_scroll.add_widget(self.hist_list)
-        self.panel_history.add_widget(self.hist_scroll)
-
-        self.stats_scroll = ScrollView(size_hint=(1, 1))
-        self.stats_list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=G_8, padding=[MARGIN, G_8, MARGIN, G_8])
-        self.stats_list.bind(minimum_height=self.stats_list.setter("height"))
-        self.clear_btn = Button(text="Очистить историю", font_size=sp(15), bold=True,
-                                size_hint_y=None, height=TOUCH*0.9, background_normal="",
-                                background_color=THEMES[self.theme]["red"], color=(1, 1, 1, 1))
-        self.clear_btn.bind(on_press=self.clear_all)
-        self.stats_list.add_widget(self.clear_btn)
-        self.stats_scroll.add_widget(self.stats_list)
-        self.panel_stats.add_widget(self.stats_scroll)
-
-        for p in (self.panel_analyze, self.panel_history, self.panel_stats):
+        for p in (self.panel_anchor, self.panel_history, self.panel_stats, self.panel_settings):
             self.add_widget(p)
 
-        bar = BoxLayout(size_hint_y=None, height=dp(52))
-        self.tabbar = bar
-        for n in ("Анализ", "История", "Статистика"):
-            b = Button(text=n, font_size=sp(11), size_hint_x=1, background_normal="")
-            b.bind(on_press=self.on_tab)
-            self.tabs[n] = b
-            bar.add_widget(b)
-        self.add_widget(bar)
+        # ---- Нижняя навигация ----
+        nav = BoxLayout(size_hint_y=None, height=dp(54), spacing=G_4)
+        self.nav_btns = {}
+        for key, icon, label in (("anchor", "🏠", "Анализ"), ("history", "📊", "История"),
+                                 ("stats", "🕐", "Статы"), ("settings", "👤", "Настройки")):
+            b = Button(text="{}\n{}".format(icon, label), font_size=sp(10),
+                       size_hint_x=1, background_normal="", halign="center", valign="middle")
+            b.bind(on_press=lambda x, k=key: self.go_tab(k))
+            self.nav_btns[key] = b
+            nav.add_widget(b)
+        self.tabbar = nav
+        self.add_widget(nav)
 
-        self.set_theme("light")
-        self.on_tab(self.tabs["Анализ"])
+        self.set_theme("dark")
+        self.go_tab("anchor")
 
-    def _sec(self, text):
-        l = Label(text=text, font_size=sp(13), bold=True, halign="left", size_hint_y=None, height=sp(18))
+    # ---------- Построение ----------
+    def _sec(self, t):
+        l = Label(text=t, font_size=sp(13), bold=True, halign="left", size_hint_y=None, height=sp(18))
         l.bind(size=lambda *a: setattr(l, "text_size", (l.width, None)))
         return l
 
-    def _spin(self, values):
-        return Spinner(text=values[0], values=values, font_size=sp(16), size_hint_x=1,
-                       size_hint_y=None, height=TOUCH, background_color=(1, 1, 1, 1))
+    def _build_anchor(self):
+        scroll = ScrollView()
+        content = BoxLayout(orientation="vertical", size_hint_y=None, spacing=G_16, padding=[0, G_8, 0, G_16])
+        content.bind(minimum_height=content.setter("height"))
 
-    def on_tab(self, btn):
-        name = btn.text
-        order = {"Анализ": self.panel_analyze, "История": self.panel_history, "Статистика": self.panel_stats}
-        for n, p in order.items():
-            p.opacity = 1 if n == name else 0
-            p.disabled = n != name
-        if name == "История":
+        # Карточка матча
+        match = Card(orientation="vertical")
+        match.add_widget(self._sec("Матч"))
+        r1 = BoxLayout(spacing=G_12, size_hint_y=None, height=TOUCH)
+        self.f_k1 = Field("Команда 1: очки", "5.2")
+        self.f_k2 = Field("Команда 2: очки", "4.8")
+        self.f_k1.size_hint_x = 1
+        self.f_k2.size_hint_x = 1
+        r1.add_widget(self.f_k1)
+        r1.add_widget(self.f_k2)
+        match.add_widget(r1)
+        self.f_line = Field("Линия / гандикап", "9.5")
+        self.f_cf = Field("Коэффициент", "1.90")
+        match.add_widget(self.f_line)
+        match.add_widget(self.f_cf)
+        content.add_widget(match)
+
+        # Чипы спорта
+        chip_card = Card(orientation="vertical")
+        chip_card.add_widget(self._sec("Вид спорта"))
+        crows = BoxLayout(size_hint_y=None, height=dp(48), spacing=G_8)
+        self.chips = {}
+        for i, s in enumerate(SPORTS):
+            b = Button(text=s, font_size=sp(14), size_hint_x=1, background_normal="")
+            b.bind(on_press=lambda x, s=s: self.set_sport(s))
+            self.chips[s] = b
+            crows.add_widget(b)
+        chip_card.add_widget(crows)
+        content.add_widget(chip_card)
+
+        # Большой прогноз
+        self.big_card = Card(orientation="vertical")
+        self.big_num = Label(text="—", font_size=sp(72), bold=True, halign="center",
+                             valign="middle", size_hint_y=None, height=dp(110))
+        self.big_detail = Label(text="Выберите параметры и нажмите Анализировать", font_size=sp(15),
+                                halign="center", valign="middle", size_hint_y=None, height=dp(60))
+        self.big_detail.bind(size=lambda *a: setattr(self.big_detail, "text_size", (self.big_detail.width, None)))
+        self.big_card.add_widget(self.big_num)
+        self.big_card.add_widget(self.big_detail)
+        content.add_widget(self.big_card)
+
+        # Кнопка
+        self.analyze_btn = Button(text="Анализировать", font_size=sp(17), bold=True,
+                                  size_hint_y=None, height=TOUCH, background_normal="",
+                                  background_color=THEMES["dark"]["accent"], color=(1, 1, 1, 1))
+        self.analyze_btn.bind(on_press=self.calculate)
+        content.add_widget(self.analyze_btn)
+
+        scroll.add_widget(content)
+        self.panel_anchor.add_widget(scroll)
+
+    def _build_history(self):
+        sc = ScrollView()
+        self.hist_list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=2)
+        self.hist_list.bind(minimum_height=self.hist_list.setter("height"))
+        sc.add_widget(self.hist_list)
+        self.panel_history.add_widget(sc)
+
+    def _build_stats(self):
+        sc = ScrollView()
+        self.stats_list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=G_8,
+                                    padding=[MARGIN, G_8, MARGIN, G_8])
+        self.stats_list.bind(minimum_height=self.stats_list.setter("height"))
+        self.clear_btn = Button(text="Очистить историю", font_size=sp(15), bold=True,
+                                size_hint_y=None, height=dp(44), background_normal="",
+                                background_color=THEMES["dark"]["red"], color=(1, 1, 1, 1))
+        self.clear_btn.bind(on_press=self.clear_all)
+        self.stats_list.add_widget(self.clear_btn)
+        self.stats_sum = Label(text="", font_size=sp(16), halign="center", valign="middle",
+                               size_hint_y=None, height=dp(120))
+        self.stats_sum.bind(size=lambda *a: setattr(self.stats_sum, "text_size", (self.stats_sum.width, None)))
+        self.stats_list.add_widget(self.stats_sum)
+        sc.add_widget(self.stats_list)
+        self.panel_stats.add_widget(sc)
+
+    def _build_settings(self):
+        self.panel_settings.add_widget(self._sec("Настройки"))
+        self.f_bank = Field("Банк", "10000")
+        self.panel_settings.add_widget(self.f_bank)
+        b = Button(text="Применить банк", font_size=sp(16), size_hint_y=None, height=dp(48), background_normal="")
+        b.bind(on_press=self.apply_bank)
+        self.panel_settings.add_widget(b)
+
+    # ---------- Навигация ----------
+    def go_tab(self, key):
+        order = {"anchor": self.panel_anchor, "history": self.panel_history,
+                 "stats": self.panel_stats, "settings": self.panel_settings}
+        for k, p in order.items():
+            p.opacity = 1 if k == key else 0
+            p.disabled = k != key
+        self.current_tab = key
+        if key == "history":
             self.render_history()
-        elif name == "Статистика":
+        elif key == "stats":
             self.render_stats()
-        self._style_tabbar(self.theme, name)
+        self._style_nav()
 
-    def on_theme(self, sw, val):
-        self.set_theme("dark" if val else "light")
+    def go_settings(self):
+        self.go_tab("settings")
 
+    def on_market(self, btn):
+        # меняем только подсказку (упрощённо) — активный сегмент
+        pass
+
+    def set_sport(self, s):
+        self.sport = s
+        self._style_chips()
+
+    # ---------- Стили ----------
     def set_theme(self, name):
         self.theme = name
         c = THEMES[name]
@@ -259,36 +314,51 @@ class MainScreen(BoxLayout):
         with self.canvas.before:
             Color(*c["bg"])
             Rectangle(pos=self.pos, size=self.size)
-        self.large_title.color = c["label"]
-        for f in (self.f_k1, self.f_k2, self.f_line, self.f_cf):
+        self.title.color = c["label"]
+        self.balance_lbl.color = c["green"]
+        self.settings_btn.color = c["accent"]
+        for w in (self.big_card,):
+            w.set_theme(name)
+        self.big_num.color = c["big"]
+        self.big_detail.color = c["secondary"]
+        for f in (self.f_k1, self.f_k2, self.f_line, self.f_cf, self.f_bank):
             f.set_theme(name)
-        self.result_card.set_theme(name)
-        self.result.color = c["label"]
         self.analyze_btn.background_color = c["accent"]
         self.clear_btn.background_color = c["red"]
-        for sp_ in (self.sport, self.strategy):
-            sp_.color = c["label"]
-            sp_.background_color = [v for v in c["field"]][:3] + [1]
-        self._style_tabbar(name, "Анализ")
+        self._style_markets()
+        self._style_chips()
+        self._style_nav()
 
-    def _style_tabbar(self, name, active):
-        c = THEMES[name]
+    def _style_markets(self):
+        c = THEMES[self.theme]
+        for m in self.market_btns.values():
+            m.background_color = c["card"]
+            m.color = c["label"]
+
+    def _style_chips(self):
+        c = THEMES[self.theme]
+        if getattr(self, "sport", None):
+            for s, b in self.chips.items():
+                act = s == self.sport
+                b.background_color = c["accent"] if act else c["card"]
+                b.color = [1, 1, 1, 1] if act else c["label"]
+
+    def _style_nav(self):
+        c = THEMES[self.theme]
         self.tabbar.canvas.before.clear()
         with self.tabbar.canvas.before:
             Color(*c["card"])
             Rectangle(pos=self.tabbar.pos, size=self.tabbar.size)
-            Color(*c["separator"])
+            Color(*c["sep"])
             Line(points=[self.tabbar.x, self.tabbar.y + self.tabbar.height,
                          self.tabbar.right, self.tabbar.y + self.tabbar.height], width=dp(0.7))
-        for tn, b in self.tabs.items():
-            b.color = c["tabactive"] if tn == active else c["tabtext"]
+        for k, b in self.nav_btns.items():
+            b.color = c["tabactive"] if k == self.current_tab else c["tabtext"]
 
-    def on_sport_change(self, sp_, val):
-        self.f_line.txt.hint_text = "Тотал партий (2.5)" if val in ("Теннис", "Настольный теннис") else "Линия тотала (9.5)"
-
-    def _num(self, txt):
+    # ---------- Логика ----------
+    def _num(self, t):
         try:
-            return float((txt or "0").strip().replace(",", "."))
+            return float((t or "0").strip().replace(",", "."))
         except Exception:
             return 0.0
 
@@ -314,90 +384,62 @@ class MainScreen(BoxLayout):
 
     def calculate(self, inst):
         try:
-            sport = self.sport.text
-            strategy = self.strategy.text
+            sport = getattr(self, "sport", "Хоккей")
             a = self._num(self.f_k1.txt.text)
             b = self._num(self.f_k2.txt.text)
             line = self._num(self.f_line.txt.text)
             cf = self._num(self.f_cf.txt.text)
             m = self.model(sport, a, b, line)
             p1, px, p2 = m["p1"], m["px"], m["p2"]
-
-            if strategy in ("Тотал ТБ", "Тотал ТМ"):
-                th = int(math.ceil(line))
-                p_over = 1 - sum(poisson(k, m["total"]) for k in range(max(th, 1)))
-                rec = "ТБ {}".format(line)
-                prob = p_over if strategy == "Тотал ТБ" else 1 - p_over
-            elif strategy == "Двойной шанс 1X":
-                rec, prob = "1X", p1 + px
-            elif strategy == "Двойной шанс X2":
-                rec, prob = "X2", px + p2
-            elif strategy == "Победа фаворита":
-                rec = "К1" if p1 >= p2 else "К2"
-                prob = max(p1, p2)
-            elif strategy == "Обе забьют":
-                prob = 1 - (poisson(0, max(a, 0.1)) * poisson(0, max(b, 0.1)))
-                rec = "Обе забьют"
-            elif strategy in ("Value (EV)", "Келли-критерий"):
-                probs = [p1, px, p2]
-                best = max(probs)
-                rec = ["К1", "X", "К2"][probs.index(best)]
-                prob = best
-            else:
-                rec, prob = "К1", p1
-
+            # по умолчанию исход: победа 1
+            probs = [p1, px, p2]
+            best = max(probs)
+            rec = ["К1", "X", "К2"][probs.index(best)]
+            prob = best
             ev = prob * cf - 1
             implied = 1 / cf if cf > 1 else 0
-            stake = self.stake_for(prob, cf) if strategy == "Келли-критерий" else 0.0
-
+            stake = 0.0
             if prob > implied + 0.03:
-                verdict = "🔥 Value — ставить"
-                vcolor = THEMES[self.theme]["green"]
+                verdict = "✅ Value — ставить"
+                vcolor = self.palette_green()
             elif prob < implied - 0.03:
-                verdict = "❌ Нет value — пропустить"
-                vcolor = THEMES[self.theme]["red"]
+                verdict = "❌ Нет value"
+                vcolor = self.palette_red()
             else:
                 verdict = "⚠️ На границе"
-                vcolor = THEMES[self.theme]["secondary"]
-
-            save_bet(sport, strategy, line, cf, prob, ev, stake)
-
-            lines = ["🎯 {} — {}".format(rec, strategy),
-                     "Вероятность прохода: {:.0f}%".format(prob * 100),
-                     "Коэффициент {:.2f} (БК: {:.0f}%)".format(cf, implied * 100),
-                     "EV: {:.3f}".format(ev),
-                     verdict]
-            if stake > 0:
-                lines.append("Ставка: {:.0f} руб".format(stake))
-            lines.append("П1 {:.0f}%  X {:.0f}%  П2 {:.0f}%".format(p1 * 100, px * 100, p2 * 100))
-            self.result.text = "\n".join(lines)
-            self.result.color = vcolor
+                vcolor = self.palette_secondary()
+            save_bet(sport, getattr(self, "market", "Исход"), rec, line, cf, prob, ev, stake)
+            self.big_num.text = "{:.0f}%".format(prob * 100)
+            self.big_num.color = vcolor
+            self.big_detail.text = "{} · EV {:+.3f}\n{} · П1 {:.0f}% X {:.0f}% П2 {:.0f}%".format(
+                rec, ev, verdict, p1 * 100, px * 100, p2 * 100)
         except Exception:
-            self.result.text = "Ошибка ввода! Проверьте числа."
-            self.result.color = THEMES[self.theme]["red"]
+            self.big_num.text = "Ошибка"
+            self.big_num.color = self.palette_red()
+            self.big_detail.text = "Проверьте ввод"
 
-    def stake_for(self, prob, cf):
-        if cf <= 1:
-            return 0.0
-        f = (prob * cf - 1) / (cf - 1)
-        return max(0.0, 10000.0 * min(f * 0.25, 0.05))
+    def palette_green(self):
+        return THEMES[self.theme]["green"] if self.theme == "light" else THEMES[self.theme]["green"]
+    def palette_red(self):
+        return THEMES[self.theme]["red"]
+    def palette_secondary(self):
+        return THEMES[self.theme]["secondary"]
 
     def render_history(self):
         self.hist_list.clear_widgets()
         rows = get_history()
         if not rows:
-            self.hist_list.add_widget(Label(text="История пуста.\nСделайте первый анализ.",
-                                            font_size=sp(16), halign="center", valign="middle",
+            self.hist_list.add_widget(Label(text="История пуста.\nСделайте анализ.", font_size=sp(16),
+                                            halign="center", valign="middle",
                                             color=THEMES[self.theme]["secondary"], size_hint_y=None, height=dp(120)))
             return
-        for row in rows[:80]:
-            hid, sport, strat, line, cf, prob, ev, stake, result, created = row
+        for row in rows[:60]:
+            hid, sport, market, strat, line, cf, prob, ev, stake, result, created = row
             rtxt = "—"
             if result:
                 rtxt = "✅ зашла" if result == "win" else "❌ не зашла"
             box = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(6))
-            info = "{} · {} · Кф {:.2f}\n{:>0.0f}% · {} · {}".format(
-                sport, strat, cf, prob * 100, created, rtxt)
+            info = "{} · {} · {:.0f}% · Кф {:.2f}\n{} · {}".format(sport, strat, prob * 100, cf, created, rtxt)
             lbl = Label(text=info, font_size=sp(13), halign="left", valign="middle", size_hint_x=1)
             lbl.bind(size=lambda *a: setattr(lbl, "text_size", (lbl.width, None)))
             box.add_widget(lbl)
@@ -409,10 +451,6 @@ class MainScreen(BoxLayout):
                 bw.bind(on_press=lambda x, b=hid: self.mark(b, "win"))
                 bl.bind(on_press=lambda x, b=hid: self.mark(b, "lose"))
                 box.add_widget(bw); box.add_widget(bl)
-            box.canvas.after.clear()
-            with box.canvas.after:
-                Color(*THEMES[self.theme]["separator"])
-                Line(points=[box.x + dp(16), box.y, box.right, box.y], width=dp(0.7))
             self.hist_list.add_widget(box)
 
     def mark(self, bid, result):
@@ -422,52 +460,34 @@ class MainScreen(BoxLayout):
     def render_stats(self):
         self.stats_list.clear_widgets()
         self.stats_list.add_widget(self.clear_btn)
+        self.stats_list.add_widget(self.stats_sum)
         rows = get_history()
         decided = [r for r in rows if r[8]]
         if not decided:
-            self.stats_list.add_widget(Label(text="Нет данных для статистики.", font_size=sp(16),
-                                             halign="center", valign="middle",
-                                             color=THEMES[self.theme]["secondary"], size_hint_y=None, height=dp(80)))
+            self.stats_sum.text = "Нет данных"
             return
-
-        per = {}
-        for r in decided:
-            strat = r[2]
-            d = per.setdefault(strat, {"w": 0, "l": 0, "profit": 0.0})
-            stake = r[6] if r[6] else 0.0
-            if r[8] == "win":
-                d["w"] += 1
-                d["profit"] += stake * (r[4] - 1) if r[4] > 1 else 0.0
-            else:
-                d["l"] += 1
-                d["profit"] -= stake
-
-        for strat, d in sorted(per.items(), key=lambda x: -(x[1]["profit"])):
-            total = d["w"] + d["l"]
-            acc = (d["w"] / total * 100) if total else 0
-            card = Card(orientation="vertical", size_hint_y=None, height=dp(104))
-            card.add_widget(Label(text=strat, font_size=sp(16), bold=True, halign="left",
-                                  color=THEMES[self.theme]["label"], size_hint_y=None, height=sp(22)))
-            l2 = Label(text="Зашло {}/{} · Точность {:.0f}% · Пр {:.0f}".format(
-                d["w"], total, acc, d["profit"]), font_size=sp(14),
-                halign="left", color=THEMES[self.theme]["secondary"], size_hint_y=None, height=sp(20))
-            l2.bind(size=lambda *a: setattr(l2, "text_size", (l2.width, None)))
-            card.add_widget(l2)
-            profit_txt = Label(text="{:+.0f} руб".format(d["profit"]), font_size=sp(15), bold=True,
-                               halign="right", color=(THEMES[self.theme]["green"] if d["profit"] >= 0 else THEMES[self.theme]["red"]),
-                               size_hint_y=None, height=sp(22))
-            card.add_widget(profit_txt)
-            self.stats_list.add_widget(card)
-
         wins = sum(1 for r in decided if r[8] == "win")
         losses = sum(1 for r in decided if r[8] == "lose")
         total = wins + losses
-        acc_all = (wins / total * 100) if total else 0
-        total_card = Card(orientation="vertical", size_hint_y=None, height=dp(90))
-        total_card.add_widget(Label(text="Итого: {} зашло из {} · {:.0f}%".format(wins, total, acc_all),
-                                    font_size=sp(16), bold=True, halign="center",
-                                    color=THEMES[self.theme]["label"]))
-        self.stats_list.add_widget(total_card)
+        acc = (wins / total * 100) if total else 0
+        profit = 0.0
+        per = {}
+        for r in decided:
+            stake = r[7] or 0.0
+            if r[8] == "win":
+                profit += stake * (r[5] - 1) if r[5] > 1 else 0.0
+            else:
+                profit -= stake
+        self.stats_sum.text = "Итого: {} из {} · {:.0f}%\nПрибыль: {:+.0f}".format(wins, total, acc, profit)
+
+    def apply_bank(self, inst):
+        try:
+            v = self._num(self.f_bank.txt.text)
+            if v > 0:
+                self.balance_lbl.text = "💰 {:.0f}".format(v)
+                self.f_bank.txt.text = ""
+        except Exception:
+            pass
 
     def clear_all(self, inst):
         clear_history()
@@ -484,7 +504,7 @@ def poisson(k, lam):
 class StartApp(App):
     def build(self):
         init_db()
-        Window.clearcolor = THEMES["light"]["bg"]
+        Window.clearcolor = THEMES["dark"]["bg"]
         return MainScreen()
 
 
