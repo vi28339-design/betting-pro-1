@@ -16,7 +16,6 @@ from kivy.uix.switch import Switch
 from kivy.uix.textinput import TextInput
 from kivy.utils import rgba
 
-# ---------- ЕДИНИЦЫ (только dp/sp, сетка 8pt) ----------
 MARGIN = dp(16)
 G_8, G_12, G_16 = dp(8), dp(12), dp(16)
 R_CARD = dp(16)
@@ -49,7 +48,6 @@ STRATEGIES = ["Тотал ТБ", "Тотал ТМ", "Двойной шанс 1X"
 DB_PATH = "betting.db"
 
 
-# ---------- БД ----------
 def get_db():
     return sqlite3.connect(DB_PATH)
 
@@ -94,7 +92,6 @@ def clear_history():
     c.commit(); c.close()
 
 
-# ---------- UI ----------
 class Card(BoxLayout):
     def __init__(self, **kw):
         super().__init__(padding=[MARGIN, G_16, MARGIN, G_16], spacing=G_8, **kw)
@@ -144,7 +141,6 @@ class MainScreen(BoxLayout):
         self.theme = "light"
         self.tabs = {}
 
-        # Header
         header = BoxLayout(size_hint_y=None, height=dp(52), padding=[MARGIN, 0, G_16, 0])
         self.large_title = Label(text="Ставки", font_size=sp(32), bold=True, halign="left", size_hint_x=1)
         self.large_title.bind(size=lambda *a: setattr(self.large_title, "text_size", (self.large_title.width, None)))
@@ -154,12 +150,10 @@ class MainScreen(BoxLayout):
         header.add_widget(self.theme_switch)
         self.add_widget(header)
 
-        # -------- Содержимое: три панели, переключаются вкладками --------
         self.panel_analyze = BoxLayout(orientation="vertical", padding=[0, 0, 0, 0])
         self.panel_history = BoxLayout(orientation="vertical", padding=[0, 0, 0, 0], opacity=0, disabled=True)
         self.panel_stats = BoxLayout(orientation="vertical", padding=[0, 0, 0, 0], opacity=0, disabled=True)
 
-        # --- Analyze ---
         scroll = ScrollView(size_hint=(1, 1))
         content = BoxLayout(orientation="vertical", size_hint_y=None, spacing=G_16, padding=[0, 0, 0, G_16])
         content.bind(minimum_height=content.setter("height"))
@@ -193,7 +187,7 @@ class MainScreen(BoxLayout):
 
         self.result_card = Card(orientation="vertical")
         self.result = Label(text="Готов к анализу.", font_size=sp(16), halign="center",
-                            valign="middle", size_hint_y=None, min_height=dp(140))
+                            valign="middle", size_hint_y=None, height=dp(140))
         self.result.bind(size=lambda *a: setattr(self.result, "text_size", (self.result.width, None)))
         self.result_card.add_widget(self.result)
         content.add_widget(self.result_card)
@@ -201,14 +195,12 @@ class MainScreen(BoxLayout):
         scroll.add_widget(content)
         self.panel_analyze.add_widget(scroll)
 
-        # --- History ---
         self.hist_scroll = ScrollView(size_hint=(1, 1))
         self.hist_list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=2)
         self.hist_list.bind(minimum_height=self.hist_list.setter("height"))
         self.hist_scroll.add_widget(self.hist_list)
         self.panel_history.add_widget(self.hist_scroll)
 
-        # --- Stats ---
         self.stats_scroll = ScrollView(size_hint=(1, 1))
         self.stats_list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=G_8, padding=[MARGIN, G_8, MARGIN, G_8])
         self.stats_list.bind(minimum_height=self.stats_list.setter("height"))
@@ -223,7 +215,6 @@ class MainScreen(BoxLayout):
         for p in (self.panel_analyze, self.panel_history, self.panel_stats):
             self.add_widget(p)
 
-        # --- Tab Bar ---
         bar = BoxLayout(size_hint_y=None, height=dp(52))
         self.tabbar = bar
         for n in ("Анализ", "История", "Статистика"):
@@ -236,7 +227,6 @@ class MainScreen(BoxLayout):
         self.set_theme("light")
         self.on_tab(self.tabs["Анализ"])
 
-    # ---------- helpers ----------
     def _sec(self, text):
         l = Label(text=text, font_size=sp(13), bold=True, halign="left", size_hint_y=None, height=sp(18))
         l.bind(size=lambda *a: setattr(l, "text_size", (l.width, None)))
@@ -246,7 +236,6 @@ class MainScreen(BoxLayout):
         return Spinner(text=values[0], values=values, font_size=sp(16), size_hint_x=1,
                        size_hint_y=None, height=TOUCH, background_color=(1, 1, 1, 1))
 
-    # ---------- вкладки ----------
     def on_tab(self, btn):
         name = btn.text
         order = {"Анализ": self.panel_analyze, "История": self.panel_history, "Статистика": self.panel_stats}
@@ -259,7 +248,6 @@ class MainScreen(BoxLayout):
             self.render_stats()
         self._style_tabbar(self.theme, name)
 
-    # ---------- тема ----------
     def on_theme(self, sw, val):
         self.set_theme("dark" if val else "light")
 
@@ -304,7 +292,6 @@ class MainScreen(BoxLayout):
         except Exception:
             return 0.0
 
-    # ---------- модель ----------
     def model(self, sport, a, b, line):
         if sport in ("Хоккей", "Футбол"):
             a = max(a, 0.1); b = max(b, 0.1)
@@ -363,7 +350,6 @@ class MainScreen(BoxLayout):
             implied = 1 / cf if cf > 1 else 0
             stake = self.stake_for(prob, cf) if strategy == "Келли-критерий" else 0.0
 
-            # 7) Value-подсветка: порог EV
             if prob > implied + 0.03:
                 verdict = "🔥 Value — ставить"
                 vcolor = THEMES[self.theme]["green"]
@@ -396,7 +382,6 @@ class MainScreen(BoxLayout):
         f = (prob * cf - 1) / (cf - 1)
         return max(0.0, 10000.0 * min(f * 0.25, 0.05))
 
-    # ---------- история (фича 1) ----------
     def render_history(self):
         self.hist_list.clear_widgets()
         rows = get_history()
@@ -424,7 +409,6 @@ class MainScreen(BoxLayout):
                 bw.bind(on_press=lambda x, b=hid: self.mark(b, "win"))
                 bl.bind(on_press=lambda x, b=hid: self.mark(b, "lose"))
                 box.add_widget(bw); box.add_widget(bl)
-            # разделитель
             box.canvas.after.clear()
             with box.canvas.after:
                 Color(*THEMES[self.theme]["separator"])
@@ -435,7 +419,6 @@ class MainScreen(BoxLayout):
         set_result(bid, result)
         self.render_history()
 
-    # ---------- статистика по стратегиям (фича 2) ----------
     def render_stats(self):
         self.stats_list.clear_widgets()
         self.stats_list.add_widget(self.clear_btn)
@@ -447,20 +430,17 @@ class MainScreen(BoxLayout):
                                              color=THEMES[self.theme]["secondary"], size_hint_y=None, height=dp(80)))
             return
 
-        # разбивка по стратегиям
         per = {}
         for r in decided:
             strat = r[2]
-            d = per.setdefault(strat, {"w": 0, "l": 0, "profit": 0.0, "cf": [0, 0.0]})
+            d = per.setdefault(strat, {"w": 0, "l": 0, "profit": 0.0})
+            stake = r[6] if r[6] else 0.0
             if r[8] == "win":
                 d["w"] += 1
-                d["cf"][0] += 1
-                d["cf"][1] += r[4]  # cf
+                d["profit"] += stake * (r[4] - 1) if r[4] > 1 else 0.0
             else:
                 d["l"] += 1
-                d["cf"][0] += 1
-                d["cf"][1] += r[4]
-                d["profit"] -= r[6] if r[6] else 0.0
+                d["profit"] -= stake
 
         for strat, d in sorted(per.items(), key=lambda x: -(x[1]["profit"])):
             total = d["w"] + d["l"]
@@ -479,7 +459,6 @@ class MainScreen(BoxLayout):
             card.add_widget(profit_txt)
             self.stats_list.add_widget(card)
 
-        # общий итог
         wins = sum(1 for r in decided if r[8] == "win")
         losses = sum(1 for r in decided if r[8] == "lose")
         total = wins + losses
