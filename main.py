@@ -16,7 +16,6 @@ from kivy.uix.textinput import TextInput
 from kivy.utils import rgba
 
 MARGIN = dp(16)
-# G_4 добавлен — без него был NameError при запуске
 G_4, G_8, G_12, G_16 = dp(4), dp(8), dp(12), dp(16)
 R_CARD = dp(16)
 TOUCH = dp(48)
@@ -30,16 +29,14 @@ THEMES = {
         "sep": rgba(0.78, 0.78, 0.80, 1), "accent": rgba("#007AFF"),
         "label": rgba("#1C1C1E"), "secondary": rgba("#8E8E93"),
         "tabtext": rgba("#8E8E93"), "tabactive": rgba("#007AFF"),
-        "green": rgba("#34C759"), "red": rgba("#FF3B30"),
-        "big": rgba("#1C1C1E"),
+        "green": rgba("#34C759"), "red": rgba("#FF3B30"), "big": rgba("#1C1C1E"),
     },
     "dark": {
         "bg": rgba("#000000"), "card": rgba("#1C1C1E"), "field": rgba("#2C2C2E"),
         "sep": rgba("#38383A"), "accent": rgba("#0A84FF"),
         "label": rgba("#FFFFFF"), "secondary": rgba("#8E8E93"),
         "tabtext": rgba("#8E8E93"), "tabactive": rgba("#0A84FF"),
-        "green": rgba("#30D158"), "red": rgba("#FF453A"),
-        "big": rgba("#FFFFFF"),
+        "green": rgba("#30D158"), "red": rgba("#FF453A"), "big": rgba("#FFFFFF"),
     },
 }
 
@@ -109,7 +106,8 @@ class Card(BoxLayout):
 class Field(BoxLayout):
     def __init__(self, label, placeholder, **kw):
         super().__init__(orientation="vertical", spacing=dp(6), **kw)
-        self.cap = Label(text=label, font_size=sp(14), halign="left", size_hint_y=None, height=sp(18),
+        self.size_hint_y = None
+        self.cap = Label(text=label, font_size=sp(14), halign="left", size_hint_y=None, height=sp(20),
                          color=THEMES["light"]["secondary"])
         self.cap.bind(size=lambda *a: setattr(self.cap, "text_size", (self.cap.width, None)))
         self.txt = TextInput(text="", hint_text=placeholder, multiline=False, font_size=sp(16),
@@ -117,6 +115,7 @@ class Field(BoxLayout):
                              background_color=(1, 1, 1, 1), background_normal="")
         self.add_widget(self.cap)
         self.add_widget(self.txt)
+        self.height = self.cap.height + self.txt.height + dp(6)
 
     def set_theme(self, name):
         c = THEMES[name]
@@ -133,7 +132,7 @@ class MainScreen(BoxLayout):
         self.tabs = {}
         self.current_tab = "anchor"
 
-        # ---- Шапка: имя + баланс + настройки ----
+        # Шапка: имя + баланс + настройки
         header = BoxLayout(size_hint_y=None, height=dp(56), padding=[MARGIN, 0, G_16, 0], spacing=G_8)
         self.title = Label(text="Betting PRO", font_size=sp(24), bold=True, halign="left", size_hint_x=1)
         self.title.bind(size=lambda *a: setattr(self.title, "text_size", (self.title.width, None)))
@@ -147,7 +146,7 @@ class MainScreen(BoxLayout):
         header.add_widget(self.settings_btn)
         self.add_widget(header)
 
-        # ---- Сегменты рынков ----
+        # Сегменты рынков
         seg = BoxLayout(size_hint_y=None, height=dp(44), padding=[MARGIN, 0, MARGIN, 0], spacing=G_8)
         self.market_btns = {}
         for m in MARKETS:
@@ -157,7 +156,7 @@ class MainScreen(BoxLayout):
             seg.add_widget(b)
         self.add_widget(seg)
 
-        # ---- Панели ----
+        # Панели
         self.panel_anchor = BoxLayout()
         self.panel_history = BoxLayout(opacity=0, disabled=True)
         self.panel_stats = BoxLayout(opacity=0, disabled=True)
@@ -171,7 +170,7 @@ class MainScreen(BoxLayout):
         for p in (self.panel_anchor, self.panel_history, self.panel_stats, self.panel_settings):
             self.add_widget(p)
 
-        # ---- Нижняя навигация ----
+        # Нижняя навигация
         nav = BoxLayout(size_hint_y=None, height=dp(54), spacing=G_4)
         self.nav_btns = {}
         for key, icon, label in (("anchor", "🏠", "Анализ"), ("history", "📊", "История"),
@@ -184,12 +183,11 @@ class MainScreen(BoxLayout):
         self.tabbar = nav
         self.add_widget(nav)
 
-        self.set_theme("dark")
+        self.set_theme("light")
         self.go_tab("anchor")
 
-    # ---------- Построение ----------
     def _sec(self, t):
-        l = Label(text=t, font_size=sp(13), bold=True, halign="left", size_hint_y=None, height=sp(18))
+        l = Label(text=t, font_size=sp(13), bold=True, halign="left", size_hint_y=None, height=sp(20))
         l.bind(size=lambda *a: setattr(l, "text_size", (l.width, None)))
         return l
 
@@ -199,7 +197,7 @@ class MainScreen(BoxLayout):
         content.bind(minimum_height=content.setter("height"))
 
         # Карточка матча
-        match = Card(orientation="vertical")
+        match = Card(orientation="vertical", size_hint_y=None, height=dp(240))
         match.add_widget(self._sec("Матч"))
         r1 = BoxLayout(spacing=G_12, size_hint_y=None, height=TOUCH)
         self.f_k1 = Field("Команда 1: очки", "5.2")
@@ -216,7 +214,7 @@ class MainScreen(BoxLayout):
         content.add_widget(match)
 
         # Чипы спорта
-        chip_card = Card(orientation="vertical")
+        chip_card = Card(orientation="vertical", size_hint_y=None, height=dp(82))
         chip_card.add_widget(self._sec("Вид спорта"))
         crows = BoxLayout(size_hint_y=None, height=dp(48), spacing=G_8)
         self.chips = {}
@@ -229,9 +227,10 @@ class MainScreen(BoxLayout):
         content.add_widget(chip_card)
 
         # Большой прогноз
-        self.big_card = Card(orientation="vertical")
+        self.big_card = Card(orientation="vertical", size_hint_y=None, height=dp(190))
         self.big_num = Label(text="—", font_size=sp(72), bold=True, halign="center",
                              valign="middle", size_hint_y=None, height=dp(110))
+        self.big_num.bind(size=lambda *a: setattr(self.big_num, "text_size", (self.big_num.width, None)))
         self.big_detail = Label(text="Выберите параметры и нажмите Анализировать", font_size=sp(15),
                                 halign="center", valign="middle", size_hint_y=None, height=dp(60))
         self.big_detail.bind(size=lambda *a: setattr(self.big_detail, "text_size", (self.big_detail.width, None)))
@@ -242,7 +241,7 @@ class MainScreen(BoxLayout):
         # Кнопка
         self.analyze_btn = Button(text="Анализировать", font_size=sp(17), bold=True,
                                   size_hint_y=None, height=TOUCH, background_normal="",
-                                  background_color=THEMES["dark"]["accent"], color=(1, 1, 1, 1))
+                                  background_color=THEMES["light"]["accent"], color=(1, 1, 1, 1))
         self.analyze_btn.bind(on_press=self.calculate)
         content.add_widget(self.analyze_btn)
 
@@ -263,7 +262,7 @@ class MainScreen(BoxLayout):
         self.stats_list.bind(minimum_height=self.stats_list.setter("height"))
         self.clear_btn = Button(text="Очистить историю", font_size=sp(15), bold=True,
                                 size_hint_y=None, height=dp(44), background_normal="",
-                                background_color=THEMES["dark"]["red"], color=(1, 1, 1, 1))
+                                background_color=THEMES["light"]["red"], color=(1, 1, 1, 1))
         self.clear_btn.bind(on_press=self.clear_all)
         self.stats_list.add_widget(self.clear_btn)
         self.stats_sum = Label(text="", font_size=sp(16), halign="center", valign="middle",
@@ -281,7 +280,6 @@ class MainScreen(BoxLayout):
         b.bind(on_press=self.apply_bank)
         self.panel_settings.add_widget(b)
 
-    # ---------- Навигация ----------
     def go_tab(self, key):
         order = {"anchor": self.panel_anchor, "history": self.panel_history,
                  "stats": self.panel_stats, "settings": self.panel_settings}
@@ -305,7 +303,6 @@ class MainScreen(BoxLayout):
         self.sport = s
         self._style_chips()
 
-    # ---------- Стили ----------
     def set_theme(self, name):
         self.theme = name
         c = THEMES[name]
@@ -354,7 +351,6 @@ class MainScreen(BoxLayout):
         for k, b in self.nav_btns.items():
             b.color = c["tabactive"] if k == self.current_tab else c["tabtext"]
 
-    # ---------- Логика ----------
     def _num(self, t):
         try:
             return float((t or "0").strip().replace(",", "."))
@@ -501,7 +497,7 @@ def poisson(k, lam):
 class StartApp(App):
     def build(self):
         init_db()
-        Window.clearcolor = THEMES["dark"]["bg"]
+        Window.clearcolor = THEMES["light"]["bg"]
         return MainScreen()
 
 
