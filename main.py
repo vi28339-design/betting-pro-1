@@ -21,6 +21,7 @@ LIVE_RED = rgba("#FF2E4C")
 WHITE = rgba("#FFFFFF")
 GREY = rgba("#9E9EA4")
 INPUT_BG = (0.15, 0.15, 0.17, 1)
+GREEN = rgba("#22C55E")
 
 LIGHT_BG = rgba("#F2F2F7")
 LIGHT_CARD = rgba("#FFFFFF")
@@ -40,15 +41,15 @@ def init_db():
     c.executescript("""CREATE TABLE IF NOT EXISTS history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sport TEXT, market TEXT, line REAL, cf REAL,
-      prob REAL, ev REAL, stake REAL, result TEXT, created TEXT);""")
+      prob REAL, stake REAL, payout REAL, result TEXT, created TEXT);""")
     c.commit(); c.close()
 
 
-def save_bet(sport, market, line, cf, prob, ev, stake):
+def save_bet(sport, market, line, cf, prob, stake, payout):
     c = get_db()
-    c.execute("INSERT INTO history (sport,market,line,cf,prob,ev,stake,result,created) "
-              "VALUES (?,?,?,?,?,?,?,?,?,?)",
-              (sport, market, line, cf, prob, ev, stake, None,
+    c.execute("INSERT INTO history (sport,market,line,cf,prob,stake,payout,result,created) "
+              "VALUES (?,?,?,?,?,?,?,?,?)",
+              (sport, market, line, cf, prob, stake, payout, None,
                datetime.datetime.now().strftime("%d.%m %H:%M")))
     c.commit(); c.close()
 
@@ -95,8 +96,9 @@ class BigBtn(Button):
                          background_color=ACCENT, **kw)
 
 
-class Field(BoxLayout):
-    def __init__(self, label, placeholder, **kw):
+# Цифровое поле: только цифры, точка, минус, "/"
+class NumField(BoxLayout):
+    def __init__(self, label, placeholder, split=False, **kw):
         super().__init__(orientation="vertical", spacing=dp(4), size_hint_y=None, **kw)
         self.cap = Label(text=label, font_size=sp(13), halign="left", color=GREY,
                          size_hint_y=None, height=sp(18))
@@ -104,10 +106,16 @@ class Field(BoxLayout):
         self.txt = TextInput(text="", hint_text=placeholder, multiline=False, font_size=sp(16),
                              padding=[dp(12), dp(12)], height=dp(46), size_hint_y=None,
                              background_color=INPUT_BG, foreground_color=WHITE,
-                             hint_text_color=GREY, cursor_color=ACCENT)
+                             hint_text_color=GREY, cursor_color=ACCENT,
+                             input_filter="float" if not split else self._split)
         self.add_widget(self.cap)
         self.add_widget(self.txt)
         self.height = self.cap.height + self.txt.height + dp(4)
+
+    def _split(self, text, from_undo):
+        # пропускаем только цифры, точки, минус и "/" для кэфов П1/X/П2
+        allowed = "0123456789./-"
+        return "".join(ch for ch in text if ch in allowed)
 
 
 class MainScreen(BoxLayout):
@@ -117,25 +125,25 @@ class MainScreen(BoxLayout):
         self.nav_btns = {}
         self.current_tab = "anchor"
         self.sport = "Хоккей"
+        self.bank = 10000.0
         self.bg_color = BG
         self.card_color = CARD
         self.text_color = WHITE
         self.grey_color = GREY
 
-        # ---- ФИКСИРОВАННАЯ ШАПКА ----
+        # Фикс. шапка
         header = BoxLayout(size_hint_y=None, height=dp(52), padding=[MARGIN, 0, MARGIN, 0], spacing=dp(8))
         self.title = Label(text="Betting PRO", font_size=sp(22), bold=True, color=self.text_color,
                            halign="left", size_hint_x=1)
         self.title.bind(size=lambda *a: setattr(self.title, "text_size", (self.title.width, None)))
-        self.balance = Label(text="Баланс: 10 000", font_size=sp(16), bold=True, color=ACCENT,
-                             size_hint_x=None, width=dp(140))
+        self.balance = Label(text="Банк: 10 000", font_size=sp(16), bold=True, color=ACCENT,
+                             size_hint_x=None, width=dp(150))
         header.add_widget(self.title)
         header.add_widget(self.balance)
         self.add_widget(header)
 
-        # ---- ФИКСИРОВАННЫЕ ВКЛАДКИ КАТЕГОРИЙ ----
-        crow = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6),
-                         padding=[MARGIN, 0, MARGIN, 0])
+        # Фикс. категории
+        crow = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6), padding=[MARGIN, 0, MARGIN, 0])
         self.chip_btns = {}
         for s in ["Все", "Хоккей", "Футбол", "Теннис", "НТТ"]:
             b = Button(text=s, size_hint_x=1, height=dp(36), size_hint_y=None,
@@ -145,11 +153,9 @@ class MainScreen(BoxLayout):
             crow.add_widget(b)
         self.add_widget(crow)
 
-        # ---- КОНТЕЙНЕР КОНТЕНТА: один активный экран с прокруткой ----
         self.content = BoxLayout()
-        self.add_widget(self.content)  # заполняет всё оставшееся место
+        self.add_widget(self.content)
 
-        # ---- ФИКСИРОВАННАЯ НИЖНЯЯ НАВИГАЦИЯ ----
         nav = BoxLayout(size_hint_y=None, height=dp(52))
         for key, icon, label in (("anchor", "1", "Анализ"), ("history", "2", "История"),
                                  ("settings", "3", "Настройки")):
@@ -163,7 +169,6 @@ class MainScreen(BoxLayout):
         self.apply_theme()
         self.go_tab("anchor")
 
-    # ---------- ПОСТРОЕНИЕ ЭКРАНОВ (каждый — свой ScrollView) ----------
     def _scroll_containing(self, widget):
         sc = ScrollView()
         widget.size_hint_y = None
@@ -171,51 +176,75 @@ class MainScreen(BoxLayout):
         sc.add_widget(widget)
         return sc
 
+    def _sec(self, t):
+        l = Label(text=t, font_size=sp(13), bold=True, color=self.grey_color, halign="left",
+                  size_hint_y=None, height=sp(18))
+        l.bind(size=lambda *a: setattr(l, "text_size", (l.width, None)))
+        return l
+
+    # ---------- Анализ ----------
     def _build_anchor(self):
         content = BoxLayout(orientation="vertical", spacing=dp(14), padding=[0, dp(10), 0, dp(16)])
-        match = Card(orientation="vertical", size_hint_y=None, height=dp(300))
-        match.add_widget(self._sec("Матч"))
+
+        match = Card(orientation="vertical", size_hint_y=None, height=dp(360))
+        match.add_widget(self._sec("Матч (счёт)"))
         r1 = BoxLayout(spacing=dp(10), size_hint_y=None, height=dp(46))
-        self.f_k1 = Field("Команда 1", "5.2")
-        self.f_k2 = Field("Команда 2", "4.8")
+        self.f_k1 = NumField("Команда 1 (очки)", "5.2")
+        self.f_k2 = NumField("Команда 2 (очки)", "4.8")
         self.f_k1.size_hint_x = 1
         self.f_k2.size_hint_x = 1
         r1.add_widget(self.f_k1); r1.add_widget(self.f_k2)
         match.add_widget(r1)
-        self.f_line = Field("Линия / гандикап", "9.5")
-        self.f_cf = Field("Коэффициент (опц.)", "1.90")
-        self.f_cf3 = Field("Кэфы П1 / X / П2", "1.90 / 3.40 / 3.60")
-        match.add_widget(self.f_line); match.add_widget(self.f_cf); match.add_widget(self.f_cf3)
+        self.f_line = NumField("Линия (тотал/фора)", "9.5")
+        self.f_cf = NumField("Коэффициент", "1.90")
+        self.f_cf3 = NumField("Кэфы П1 / X / П2", "1.90/3.40/3.60", split=True)
+        self.f_stake = NumField("Сумма ставки", "500")
+        match.add_widget(self.f_line)
+        match.add_widget(self.f_cf)
+        match.add_widget(self.f_cf3)
+        match.add_widget(self.f_stake)
         content.add_widget(match)
 
-        self.big_card = Card(orientation="vertical", size_hint_y=None, height=dp(190))
-        self.big_num = Label(text="—", font_size=sp(64), bold=True, color=ACCENT,
-                             halign="center", valign="middle", size_hint_y=None, height=dp(100))
+        # Результат-блок
+        self.big_card = Card(orientation="vertical", size_hint_y=None, height=dp(210))
+        self.big_num = Label(text="Тотал: —", font_size=sp(30), bold=True, color=ACCENT,
+                             halign="center", valign="middle", size_hint_y=None, height=dp(46))
         self.big_num.bind(size=lambda *a: setattr(self.big_num, "text_size", (self.big_num.width, None)))
-        self.big_detail = Label(text="Введите параметры и нажмите кнопку", font_size=sp(14),
-                                color=self.grey_color, halign="center", valign="middle",
-                                size_hint_y=None, height=dp(60))
-        self.big_detail.bind(size=lambda *a: setattr(self.big_detail, "text_size", (self.big_detail.width, None)))
+        self.profit_lbl = Label(text="Потенц. выигрыш: —", font_size=sp(26), bold=True, color=GREEN,
+                                halign="center", valign="middle", size_hint_y=None, height=dp(50))
+        self.profit_lbl.bind(size=lambda *a: setattr(self.profit_lbl, "text_size", (self.profit_lbl.width, None)))
+        self.kelly_lbl = Label(text="Келли: —", font_size=sp(16), color=WHITE,
+                               halign="center", valign="middle", size_hint_y=None, height=dp(40))
+        self.kelly_lbl.bind(size=lambda *a: setattr(self.kelly_lbl, "text_size", (self.kelly_lbl.width, None)))
+        self.detail_lbl = Label(text="", font_size=sp(13), color=self.grey_color,
+                                halign="center", valign="middle", size_hint_y=None, height=dp(60))
+        self.detail_lbl.bind(size=lambda *a: setattr(self.detail_lbl, "text_size", (self.detail_lbl.width, None)))
         self.big_card.add_widget(self.big_num)
-        self.big_card.add_widget(self.big_detail)
+        self.big_card.add_widget(self.profit_lbl)
+        self.big_card.add_widget(self.kelly_lbl)
+        self.big_card.add_widget(self.detail_lbl)
         content.add_widget(self.big_card)
 
-        self.analyze_btn = BigBtn("Анализировать")
+        self.analyze_btn = BigBtn("Рассчитать")
         self.analyze_btn.bind(on_press=self.calculate)
         content.add_widget(self.analyze_btn)
 
         return self._scroll_containing(content)
 
+    # ---------- История ----------
     def _build_history(self):
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=2)
         box.bind(minimum_height=box.setter("height"))
         self.hist_list = box
         return self._scroll_containing(box)
 
+    # ---------- Настройки ----------
     def _build_settings(self):
         content = BoxLayout(orientation="vertical", spacing=dp(14), padding=[MARGIN, dp(16), MARGIN, dp(16)])
-        self.f_bank = Field("Банк", "10000")
+        self.f_bank = NumField("Банк", "10000")
+        self.f_pct = NumField("Фикс. процент от банка (Келли кап)", "4")
         content.add_widget(self.f_bank)
+        content.add_widget(self.f_pct)
         b = BigBtn("Применить банк")
         b.bind(on_press=self.apply_bank)
         content.add_widget(b)
@@ -227,20 +256,12 @@ class MainScreen(BoxLayout):
         content.add_widget(trow)
         return self._scroll_containing(content)
 
-    def _sec(self, t):
-        l = Label(text=t, font_size=sp(13), bold=True, color=self.grey_color, halign="left",
-                  size_hint_y=None, height=sp(18))
-        l.bind(size=lambda *a: setattr(l, "text_size", (l.width, None)))
-        return l
-
-    # ---------- НАВИГАЦИЯ ----------
     def go_tab(self, key):
         self.content.clear_widgets()
         if key == "anchor":
             self.content.add_widget(self._build_anchor())
         elif key == "history":
-            sc = self._build_history()
-            self.content.add_widget(sc)
+            self.content.add_widget(self._build_history())
             self.render_history()
         elif key == "settings":
             self.content.add_widget(self._build_settings())
@@ -272,7 +293,6 @@ class MainScreen(BoxLayout):
             self.bg_color, self.card_color = LIGHT_BG, LIGHT_CARD
             self.text_color, self.grey_color = LIGHT_TEXT, LIGHT_GREY
         Window.clearcolor = self.bg_color
-        # фон всего экрана и контента
         self.canvas.before.clear()
         with self.canvas.before:
             Color(*self.bg_color)
@@ -281,16 +301,14 @@ class MainScreen(BoxLayout):
         if hasattr(self, "big_card"):
             self.big_card.set_card_color(self.card_color)
             self.big_num.color = ACCENT
-            self.big_detail.color = self.grey_color
-        # поля
-        for fname in ("f_k1", "f_k2", "f_line", "f_cf", "f_cf3", "f_bank"):
+            self.detail_lbl.color = self.grey_color
+        for fname in ("f_k1", "f_k2", "f_line", "f_cf", "f_cf3", "f_stake", "f_bank", "f_pct"):
             f = getattr(self, fname, None)
             if f:
                 f.cap.color = self.grey_color
                 f.txt.foreground_color = self.text_color
                 f.txt.hint_text_color = self.grey_color
                 f.txt.background_color = INPUT_BG if self.dark else LIGHT_CARD
-        # вкладки
         for name, b in self.chip_btns.items():
             act = name == self.sport
             b.background_color = ACCENT if act else self.card_color
@@ -335,47 +353,74 @@ class MainScreen(BoxLayout):
             b = self._num(self.f_k2.txt.text)
             line = self._num(self.f_line.txt.text)
             cf = self._num(self.f_cf.txt.text)
-            m = self.model(self.sport, a, b, line)
-            p1, px, p2 = m["p1"], m["px"], m["p2"]
-            probs = [p1, px, p2]
-            best = max(probs)
-            rec = ["К1", "X", "К2"][probs.index(best)]
-            prob = best
-            ev = prob*cf - 1 if cf > 1 else 0
-            implied = 1/cf if cf > 1 else 0
+            stake = self._num(self.f_stake.txt.text)
 
+            # авто-тотал и разница
+            total = a + b
+            diff = a - b
+
+            # вероятности модели
+            m = self.model(self.sport, a, b, line)
+            probs = [m["p1"], m["px"], m["p2"]]
+            best = max(probs)
+            idx = probs.index(best)
+            rec = ["К1", "X", "К2"][idx]
+            prob = best
+
+            # Келли
+            self.pct_cap = self._num(getattr(self, "f_pct", None).txt.text if hasattr(self, "f_pct") else "4") or 4
+            if cf > 1:
+                b_kelly = (prob*cf - 1) / (cf - 1) if cf > 1 else 0
+                kelly_frac = max(0.0, b_kelly)
+                kelly_stake = self.bank * min(kelly_frac, self.pct_cap/100.0)
+            else:
+                kelly_stake = 0.0
+
+            # потенциальный выигрыш
+            if stake <= 0:
+                stake = kelly_stake if kelly_stake > 0 else 0
+            payout = stake * cf if cf > 1 else 0
+            profit = payout - stake
+
+            # рынок (маржу)
             edge = None
             market_probs = [0.0, 0.0, 0.0]
             try:
-                parts = [x.strip().replace(",", ".") for x in self.f_cf3.txt.text.split("/")]
-                cf1 = float(parts[0]) if len(parts) > 0 and parts[0] else 0
+                parts = [x.strip() for x in self.f_cf3.txt.text.split("/")]
+                cf1 = float(parts[0]) if parts and parts[0] else 0
                 cfx = float(parts[1]) if len(parts) > 1 and parts[1] else 0
                 cf2 = float(parts[2]) if len(parts) > 2 and parts[2] else 0
                 market_probs = list(self.market_prob(cf1, cfx, cf2))
                 if sum(market_probs) > 0:
-                    edge = prob - market_probs[probs.index(best)]
+                    edge = prob - market_probs[idx]
             except Exception:
                 edge = None
 
+            # вердикт
             if edge is not None:
                 verdict = "Value" if edge > 0.03 else ("Нет value" if edge < -0.03 else "На границе")
             else:
+                implied = 1/cf if cf > 1 else 0
                 verdict = "Value" if prob > implied+0.03 else ("Нет value" if prob < implied-0.03 else "На границе")
 
-            save_bet(self.sport, "Исход", line, cf, prob, ev, 0)
-            self.big_num.text = "{:.0f}%".format(prob*100)
-            self.big_num.color = ACCENT if verdict == "Value" else (LIVE_RED if verdict == "Нет value" else self.grey_color)
+            # сохранить
+            save_bet(self.sport, rec, line, cf, prob, kelly_stake, payout)
+
+            # вывод
+            self.big_num.text = "Тотал: {:.1f}  (К1 ведёт на {:.0f})".format(total, abs(diff)) if diff != 0 else "Тотал: {:.1f}".format(total)
+            self.profit_lbl.text = "Потенц. выигрыш: {:.0f}  |  Чистая: {:+.0f}".format(payout, profit if stake > 0 else 0)
+            self.kelly_lbl.text = "Келли: {:.0f} ({}% от банка)".format(kelly_stake, self.pct_cap)
+            det = "{} · Вер. {:.0f}% · EV {:+.3f}".format(rec, prob*100, prob*cf-1 if cf>1 else 0)
             if edge is not None:
-                mline = "Рынок: П1 {:.0f}% X {:.0f}% П2 {:.0f}%  Edge: {:+.0f}п.п".format(
-                    market_probs[0]*100, market_probs[1]*100, market_probs[2]*100, edge*100)
-            else:
-                mline = "Рынок не введён"
-            self.big_detail.text = "{} · EV {:+.3f}\nП1 {:.0f}% X {:.0f}% П2 {:.0f}%\n{}".format(
-                verdict, ev, p1*100, px*100, p2*100, mline)
+                det += " | Edge {:+.0f}п.п".format(edge*100)
+            det += " | {}".format(verdict)
+            self.detail_lbl.text = det
+            self.detail_lbl.color = ACCENT if "Value" in verdict else (LIVE_RED if "Нет" in verdict else self.grey_color)
         except Exception:
-            self.big_num.text = "Ошибка"
+            self.big_num.text = "Ошибка ввода"
             self.big_num.color = LIVE_RED
-            self.big_detail.text = "Проверьте ввод"
+            self.profit_lbl.text = ""
+            self.kelly_lbl.text = "Проверьте числа"
 
     def render_history(self):
         self.hist_list.clear_widgets()
@@ -385,17 +430,18 @@ class MainScreen(BoxLayout):
                                             halign="center", valign="middle", size_hint_y=None, height=dp(120)))
             return
         for row in rows[:50]:
-            hid, sport, market, line, cf, prob, ev, stake, result, created = row
+            hid, sport, market, line, cf, prob, stake, payout, result, created = row
             rtxt = "зашла" if result == "win" else ("не зашла" if result == "lose" else "-")
-            card = Card(orientation="horizontal", size_hint_y=None, height=dp(54))
+            card = Card(orientation="horizontal", size_hint_y=None, height=dp(58))
             card.set_card_color(self.card_color)
-            lbl = Label(text="{} · {:.0f}% · {}\nКф {:.2f} · {}".format(sport, prob*100, created, cf, rtxt),
-                        font_size=sp(12), color=self.text_color, halign="left", valign="middle", size_hint_x=1)
+            lbl = Label(text="{} · {} · Кф {:.2f} · {}\nСтавка {:.0f} → Выплата {:.0f} · {}".format(
+                sport, market, cf, created, stake, payout, rtxt),
+                font_size=sp(11), color=self.text_color, halign="left", valign="middle", size_hint_x=1)
             lbl.bind(size=lambda *a: setattr(lbl, "text_size", (lbl.width, None)))
             card.add_widget(lbl)
             if not result:
                 bw = Button(text="+", size_hint=(None,None), size=(dp(40),dp(40)), background_normal="",
-                            background_color=rgba("#22C55E"), color=[1,1,1,1])
+                            background_color=GREEN, color=[1,1,1,1])
                 bl = Button(text="-", size_hint=(None,None), size=(dp(40),dp(40)), background_normal="",
                             background_color=LIVE_RED, color=[1,1,1,1])
                 bw.bind(on_press=lambda x, b=hid: (set_result(b, "win"), self.render_history()))
@@ -407,7 +453,8 @@ class MainScreen(BoxLayout):
         try:
             v = self._num(self.f_bank.txt.text)
             if v > 0:
-                self.balance.text = "Баланс: {:.0f}".format(v)
+                self.bank = v
+                self.balance.text = "Банк: {:.0f}".format(v)
                 self.f_bank.txt.text = ""
         except Exception:
             pass
