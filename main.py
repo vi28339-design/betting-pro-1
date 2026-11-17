@@ -16,7 +16,8 @@ from kivy.uix.textinput import TextInput
 from kivy.utils import rgba
 
 MARGIN = dp(16)
-G_8, G_12, G_16 = dp(8), dp(12), dp(16)
+# G_4 добавлен — без него был NameError при запуске
+G_4, G_8, G_12, G_16 = dp(4), dp(8), dp(12), dp(16)
 R_CARD = dp(16)
 TOUCH = dp(48)
 
@@ -219,7 +220,7 @@ class MainScreen(BoxLayout):
         chip_card.add_widget(self._sec("Вид спорта"))
         crows = BoxLayout(size_hint_y=None, height=dp(48), spacing=G_8)
         self.chips = {}
-        for i, s in enumerate(SPORTS):
+        for s in SPORTS:
             b = Button(text=s, font_size=sp(14), size_hint_x=1, background_normal="")
             b.bind(on_press=lambda x, s=s: self.set_sport(s))
             self.chips[s] = b
@@ -298,7 +299,6 @@ class MainScreen(BoxLayout):
         self.go_tab("settings")
 
     def on_market(self, btn):
-        # меняем только подсказку (упрощённо) — активный сегмент
         pass
 
     def set_sport(self, s):
@@ -317,8 +317,7 @@ class MainScreen(BoxLayout):
         self.title.color = c["label"]
         self.balance_lbl.color = c["green"]
         self.settings_btn.color = c["accent"]
-        for w in (self.big_card,):
-            w.set_theme(name)
+        self.big_card.set_theme(name)
         self.big_num.color = c["big"]
         self.big_detail.color = c["secondary"]
         for f in (self.f_k1, self.f_k2, self.f_line, self.f_cf, self.f_bank):
@@ -391,7 +390,6 @@ class MainScreen(BoxLayout):
             cf = self._num(self.f_cf.txt.text)
             m = self.model(sport, a, b, line)
             p1, px, p2 = m["p1"], m["px"], m["p2"]
-            # по умолчанию исход: победа 1
             probs = [p1, px, p2]
             best = max(probs)
             rec = ["К1", "X", "К2"][probs.index(best)]
@@ -419,7 +417,7 @@ class MainScreen(BoxLayout):
             self.big_detail.text = "Проверьте ввод"
 
     def palette_green(self):
-        return THEMES[self.theme]["green"] if self.theme == "light" else THEMES[self.theme]["green"]
+        return THEMES[self.theme]["green"]
     def palette_red(self):
         return THEMES[self.theme]["red"]
     def palette_secondary(self):
@@ -471,7 +469,6 @@ class MainScreen(BoxLayout):
         total = wins + losses
         acc = (wins / total * 100) if total else 0
         profit = 0.0
-        per = {}
         for r in decided:
             stake = r[7] or 0.0
             if r[8] == "win":
