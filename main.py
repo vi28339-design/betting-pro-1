@@ -4,7 +4,7 @@ import sqlite3
 
 from kivy.app import App
 from kivy.core.window import Window
-from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
+from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.metrics import dp, sp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -23,7 +23,7 @@ WHITE = rgba("#FFFFFF")
 GREY = rgba("#9E9EA4")
 INPUT_BG = (0.15, 0.15, 0.17, 1)
 
-# Светлая тема (для переключателя)
+# Светлая тема
 LIGHT_BG = rgba("#F2F2F7")
 LIGHT_CARD = rgba("#FFFFFF")
 LIGHT_TEXT = rgba("#1C1C1E")
@@ -130,8 +130,8 @@ class MainScreen(BoxLayout):
         self.title = Label(text="Betting PRO", font_size=sp(22), bold=True, color=self.text_color,
                            halign="left", size_hint_x=1)
         self.title.bind(size=lambda *a: setattr(self.title, "text_size", (self.title.width, None)))
-        self.balance = Label(text="💰 10 000", font_size=sp(17), bold=True, color=ACCENT,
-                             size_hint_x=None, width=dp(110))
+        self.balance = Label(text="Баланс: 10 000", font_size=sp(16), bold=True, color=ACCENT,
+                             size_hint_x=None, width=dp(140))
         header.add_widget(self.title)
         header.add_widget(self.balance)
         self.add_widget(header)
@@ -142,7 +142,7 @@ class MainScreen(BoxLayout):
         crow.bind(minimum_width=crow.setter("width"))
         self.chip_btns = {}
         for s in ["Все", "Хоккей", "Футбол", "Теннис", "НТТ"]:
-            b = Button(text=s, size_hint=(None, None), size=(dp(88), dp(36)), font_size=sp(14),
+            b = Button(text=s, size_hint=(None, None), size=(dp(90), dp(36)), font_size=sp(14),
                        background_normal="", background_color=CARD, color=GREY)
             b.bind(on_press=lambda x, s=s: self.set_sport(s))
             self.chip_btns[s] = b
@@ -162,8 +162,8 @@ class MainScreen(BoxLayout):
 
         # ---- Нижний таб-бар ----
         nav = BoxLayout(size_hint_y=None, height=dp(54))
-        for key, icon, label in (("anchor", "🏠", "Анализ"), ("history", "📊", "История"),
-                                 ("settings", "⚙", "Настройки")):
+        for key, icon, label in (("anchor", "1", "Анализ"), ("history", "2", "История"),
+                                 ("settings", "3", "Настройки")):
             b = Button(text="{}\n{}".format(icon, label), font_size=sp(10), size_hint_x=1,
                        background_normal="", color=GREY, halign="center", valign="middle")
             b.bind(on_press=lambda x, k=key: self.go_tab(k))
@@ -252,7 +252,7 @@ class MainScreen(BoxLayout):
 
     def _style_nav(self):
         for k, b in self.nav_btns.items():
-            b.color = ACCENT if k == self.current_tab else self.grey_color
+            b.color = self.text_color if k == self.current_tab else self.grey_color
 
     def set_sport(self, s):
         self.sport = s
@@ -286,16 +286,11 @@ class MainScreen(BoxLayout):
             f.cap.color = self.grey_color
             f.txt.foreground_color = self.text_color
             f.txt.hint_text_color = self.grey_color
-            f.txt.background_color = {(False): LIGHT_CARD, (True): INPUT_BG}.get((self.dark,), INPUT_BG)
             f.txt.background_color = INPUT_BG if self.dark else LIGHT_CARD
-        # категории
         for name, b in self.chip_btns.items():
             act = name == self.sport
             b.background_color = ACCENT if act else self.card_color
             b.color = [0, 0, 0, 1] if act else self.grey_color
-        # таб-бар
-        for k, b in self.nav_btns.items():
-            b.color = ACCENT if k == self.current_tab else self.grey_color
         self._style_nav()
 
     def _num(self, t):
@@ -338,10 +333,10 @@ class MainScreen(BoxLayout):
             prob = best
             ev = prob*cf - 1
             implied = 1/cf if cf > 1 else 0
-            verdict = "✅ Value" if prob > implied+0.03 else ("❌ Нет value" if prob < implied-0.03 else "⚠️ На границе")
+            verdict = "Value" if prob > implied+0.03 else ("Нет value" if prob < implied-0.03 else "На границе")
             save_bet(self.sport, "Исход", line, cf, prob, ev, 0)
             self.big_num.text = "{:.0f}%".format(prob*100)
-            self.big_num.color = ACCENT if "✅" in verdict else (LIVE_RED if "❌" in verdict else self.grey_color)
+            self.big_num.color = ACCENT if verdict == "Value" else (LIVE_RED if verdict == "Нет value" else self.grey_color)
             self.big_detail.text = "{} · EV {:+.3f}\nП1 {:.0f}% X {:.0f}% П2 {:.0f}%".format(verdict, ev, p1*100, px*100, p2*100)
         except Exception:
             self.big_num.text = "Ошибка"
@@ -357,7 +352,7 @@ class MainScreen(BoxLayout):
             return
         for row in rows[:50]:
             hid, sport, market, line, cf, prob, ev, stake, result, created = row
-            rtxt = "✅ зашла" if result == "win" else ("❌ не зашла" if result == "lose" else "—")
+            rtxt = "зашла" if result == "win" else ("не зашла" if result == "lose" else "-")
             card = Card(orientation="horizontal", size_hint_y=None, height=dp(54))
             card.set_card_color(self.card_color)
             lbl = Label(text="{} · {:.0f}% · {}\nКф {:.2f} · {}".format(sport, prob*100, created, cf, rtxt),
@@ -365,9 +360,9 @@ class MainScreen(BoxLayout):
             lbl.bind(size=lambda *a: setattr(lbl, "text_size", (lbl.width, None)))
             card.add_widget(lbl)
             if not result:
-                bw = Button(text="✔", size_hint=(None,None), size=(dp(40),dp(40)), background_normal="",
+                bw = Button(text="+", size_hint=(None,None), size=(dp(40),dp(40)), background_normal="",
                             background_color=rgba("#22C55E"), color=[1,1,1,1])
-                bl = Button(text="✘", size_hint=(None,None), size=(dp(40),dp(40)), background_normal="",
+                bl = Button(text="-", size_hint=(None,None), size=(dp(40),dp(40)), background_normal="",
                             background_color=LIVE_RED, color=[1,1,1,1])
                 bw.bind(on_press=lambda x, b=hid: (set_result(b, "win"), self.render_history()))
                 bl.bind(on_press=lambda x, b=hid: (set_result(b, "lose"), self.render_history()))
@@ -378,7 +373,7 @@ class MainScreen(BoxLayout):
         try:
             v = self._num(self.f_bank.txt.text)
             if v > 0:
-                self.balance.text = "💰 {:.0f}".format(v)
+                self.balance.text = "Баланс: {:.0f}".format(v)
                 self.f_bank.txt.text = ""
         except Exception:
             pass
