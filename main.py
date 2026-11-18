@@ -32,6 +32,7 @@ MARGIN = dp(16)
 R_CARD = dp(16)
 
 
+# ---------- БД ----------
 def get_db():
     return sqlite3.connect("betting.db")
 
@@ -48,7 +49,7 @@ def init_db():
 def save_bet(sport, market, line, cf, prob, stake, payout):
     c = get_db()
     c.execute("INSERT INTO history (sport,market,line,cf,prob,stake,payout,result,created) "
-              "VALUES (?,?,?,?,?,?,?,?,?)",
+              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"[0:0] + "VALUES (?,?,?,?,?,?,?,?,?)",
               (sport, market, line, cf, prob, stake, payout, None,
                datetime.datetime.now().strftime("%d.%m %H:%M")))
     c.commit(); c.close()
@@ -91,31 +92,34 @@ class Card(BoxLayout):
 
 class BigBtn(Button):
     def __init__(self, text, **kw):
-        super().__init__(text=text, size_hint_y=None, height=dp(50), font_size=sp(17),
+        super().__init__(text=text, size_hint_y=None, height=dp(50), font_size=sp(18),
                          bold=True, color=[0, 0, 0, 1], background_normal="",
                          background_color=ACCENT, **kw)
 
 
-# Цифровое поле: только цифры, точка, минус, "/"
-class NumField(BoxLayout):
-    def __init__(self, label, placeholder, split=False, **kw):
+# Поле с иконкой-префиксом и цифровым фильтром
+class IconField(BoxLayout):
+    def __init__(self, icon, label, placeholder, split=False, **kw):
         super().__init__(orientation="vertical", spacing=dp(4), size_hint_y=None, **kw)
         self.cap = Label(text=label, font_size=sp(13), halign="left", color=GREY,
                          size_hint_y=None, height=sp(18))
         self.cap.bind(size=lambda *a: setattr(self.cap, "text_size", (self.cap.width, None)))
+        row = BoxLayout(spacing=dp(6), size_hint_y=None, height=dp(46))
+        self.icon = Label(text=icon, font_size=sp(18), color=ACCENT, size_hint=(None, None),
+                          width=dp(28))
         self.txt = TextInput(text="", hint_text=placeholder, multiline=False, font_size=sp(16),
-                             padding=[dp(12), dp(12)], height=dp(46), size_hint_y=None,
+                             padding=[dp(10), dp(12)], height=dp(46), size_hint_y=None, size_hint_x=1,
                              background_color=INPUT_BG, foreground_color=WHITE,
                              hint_text_color=GREY, cursor_color=ACCENT,
-                             input_filter="float" if not split else self._split)
+                             input_filter=self._split if split else "float")
+        row.add_widget(self.icon)
+        row.add_widget(self.txt)
         self.add_widget(self.cap)
-        self.add_widget(self.txt)
-        self.height = self.cap.height + self.txt.height + dp(4)
+        self.add_widget(row)
+        self.height = self.cap.height + row.height + dp(4)
 
     def _split(self, text, from_undo):
-        # пропускаем только цифры, точки, минус и "/" для кэфов П1/X/П2
-        allowed = "0123456789./-"
-        return "".join(ch for ch in text if ch in allowed)
+        return "".join(ch for ch in text if ch in "0123456789./-")
 
 
 class MainScreen(BoxLayout):
@@ -126,12 +130,13 @@ class MainScreen(BoxLayout):
         self.current_tab = "anchor"
         self.sport = "Хоккей"
         self.bank = 10000.0
+        self.pct_cap = 4.0
         self.bg_color = BG
         self.card_color = CARD
         self.text_color = WHITE
         self.grey_color = GREY
 
-        # Фикс. шапка
+        # Шапка
         header = BoxLayout(size_hint_y=None, height=dp(52), padding=[MARGIN, 0, MARGIN, 0], spacing=dp(8))
         self.title = Label(text="Betting PRO", font_size=sp(22), bold=True, color=self.text_color,
                            halign="left", size_hint_x=1)
@@ -142,7 +147,7 @@ class MainScreen(BoxLayout):
         header.add_widget(self.balance)
         self.add_widget(header)
 
-        # Фикс. категории
+        # Категории
         crow = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6), padding=[MARGIN, 0, MARGIN, 0])
         self.chip_btns = {}
         for s in ["Все", "Хоккей", "Футбол", "Теннис", "НТТ"]:
@@ -156,6 +161,7 @@ class MainScreen(BoxLayout):
         self.content = BoxLayout()
         self.add_widget(self.content)
 
+        # Нижняя навигация
         nav = BoxLayout(size_hint_y=None, height=dp(52))
         for key, icon, label in (("anchor", "1", "Анализ"), ("history", "2", "История"),
                                  ("settings", "3", "Настройки")):
@@ -189,32 +195,32 @@ class MainScreen(BoxLayout):
         match = Card(orientation="vertical", size_hint_y=None, height=dp(360))
         match.add_widget(self._sec("Матч (счёт)"))
         r1 = BoxLayout(spacing=dp(10), size_hint_y=None, height=dp(46))
-        self.f_k1 = NumField("Команда 1 (очки)", "5.2")
-        self.f_k2 = NumField("Команда 2 (очки)", "4.8")
+        self.f_k1 = IconField("1", "Команда 1 (очки)", "5.2")
+        self.f_k2 = IconField("2", "Команда 2 (очки)", "4.8")
         self.f_k1.size_hint_x = 1
         self.f_k2.size_hint_x = 1
         r1.add_widget(self.f_k1); r1.add_widget(self.f_k2)
         match.add_widget(r1)
-        self.f_line = NumField("Линия (тотал/фора)", "9.5")
-        self.f_cf = NumField("Коэффициент", "1.90")
-        self.f_cf3 = NumField("Кэфы П1 / X / П2", "1.90/3.40/3.60", split=True)
-        self.f_stake = NumField("Сумма ставки", "500")
+        self.f_line = IconField("L", "Линия (тотал/фора)", "9.5")
+        self.f_cf = IconField("≈", "Коэффициент", "1.90")
+        self.f_cf3 = IconField("3", "Кэфы П1 / X / П2", "1.90/3.40/3.60", split=True)
+        self.f_stake = IconField("₽", "Сумма ставки", "500")
         match.add_widget(self.f_line)
         match.add_widget(self.f_cf)
         match.add_widget(self.f_cf3)
         match.add_widget(self.f_stake)
         content.add_widget(match)
 
-        # Результат-блок
-        self.big_card = Card(orientation="vertical", size_hint_y=None, height=dp(210))
-        self.big_num = Label(text="Тотал: —", font_size=sp(30), bold=True, color=ACCENT,
-                             halign="center", valign="middle", size_hint_y=None, height=dp(46))
+        # Яркий результат
+        self.big_card = Card(orientation="vertical", size_hint_y=None, height=dp(220))
+        self.big_num = Label(text="Тотал: —", font_size=sp(26), bold=True, color=ACCENT,
+                             halign="center", valign="middle", size_hint_y=None, height=dp(44))
         self.big_num.bind(size=lambda *a: setattr(self.big_num, "text_size", (self.big_num.width, None)))
-        self.profit_lbl = Label(text="Потенц. выигрыш: —", font_size=sp(26), bold=True, color=GREEN,
-                                halign="center", valign="middle", size_hint_y=None, height=dp(50))
+        self.profit_lbl = Label(text="Потенц. выигрыш: —", font_size=sp(34), bold=True, color=GREEN,
+                                halign="center", valign="middle", size_hint_y=None, height=dp(60))
         self.profit_lbl.bind(size=lambda *a: setattr(self.profit_lbl, "text_size", (self.profit_lbl.width, None)))
         self.kelly_lbl = Label(text="Келли: —", font_size=sp(16), color=WHITE,
-                               halign="center", valign="middle", size_hint_y=None, height=dp(40))
+                               halign="center", valign="middle", size_hint_y=None, height=dp(36))
         self.kelly_lbl.bind(size=lambda *a: setattr(self.kelly_lbl, "text_size", (self.kelly_lbl.width, None)))
         self.detail_lbl = Label(text="", font_size=sp(13), color=self.grey_color,
                                 halign="center", valign="middle", size_hint_y=None, height=dp(60))
@@ -231,21 +237,19 @@ class MainScreen(BoxLayout):
 
         return self._scroll_containing(content)
 
-    # ---------- История ----------
     def _build_history(self):
         box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=2)
         box.bind(minimum_height=box.setter("height"))
         self.hist_list = box
         return self._scroll_containing(box)
 
-    # ---------- Настройки ----------
     def _build_settings(self):
         content = BoxLayout(orientation="vertical", spacing=dp(14), padding=[MARGIN, dp(16), MARGIN, dp(16)])
-        self.f_bank = NumField("Банк", "10000")
-        self.f_pct = NumField("Фикс. процент от банка (Келли кап)", "4")
+        self.f_bank = IconField("₽", "Банк", "10000")
+        self.f_pct = IconField("%", "Келли кап (% от банка)", "4")
         content.add_widget(self.f_bank)
         content.add_widget(self.f_pct)
-        b = BigBtn("Применить банк")
+        b = BigBtn("Применить")
         b.bind(on_press=self.apply_bank)
         content.add_widget(b)
         trow = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
@@ -306,6 +310,7 @@ class MainScreen(BoxLayout):
             f = getattr(self, fname, None)
             if f:
                 f.cap.color = self.grey_color
+                f.icon.color = ACCENT
                 f.txt.foreground_color = self.text_color
                 f.txt.hint_text_color = self.grey_color
                 f.txt.background_color = INPUT_BG if self.dark else LIGHT_CARD
@@ -355,11 +360,8 @@ class MainScreen(BoxLayout):
             cf = self._num(self.f_cf.txt.text)
             stake = self._num(self.f_stake.txt.text)
 
-            # авто-тотал и разница
             total = a + b
             diff = a - b
-
-            # вероятности модели
             m = self.model(self.sport, a, b, line)
             probs = [m["p1"], m["px"], m["p2"]]
             best = max(probs)
@@ -368,21 +370,22 @@ class MainScreen(BoxLayout):
             prob = best
 
             # Келли
-            self.pct_cap = self._num(getattr(self, "f_pct", None).txt.text if hasattr(self, "f_pct") else "4") or 4
+            self.pct_cap = self._num(self.f_pct.txt.text) if hasattr(self, "f_pct") else 4
+            if self.pct_cap <= 0:
+                self.pct_cap = 4.0
             if cf > 1:
-                b_kelly = (prob*cf - 1) / (cf - 1) if cf > 1 else 0
+                b_kelly = (prob*cf - 1) / (cf - 1)
                 kelly_frac = max(0.0, b_kelly)
                 kelly_stake = self.bank * min(kelly_frac, self.pct_cap/100.0)
             else:
                 kelly_stake = 0.0
 
-            # потенциальный выигрыш
             if stake <= 0:
-                stake = kelly_stake if kelly_stake > 0 else 0
+                stake = kelly_stake
             payout = stake * cf if cf > 1 else 0
             profit = payout - stake
 
-            # рынок (маржу)
+            # рынок
             edge = None
             market_probs = [0.0, 0.0, 0.0]
             try:
@@ -396,21 +399,19 @@ class MainScreen(BoxLayout):
             except Exception:
                 edge = None
 
-            # вердикт
             if edge is not None:
                 verdict = "Value" if edge > 0.03 else ("Нет value" if edge < -0.03 else "На границе")
             else:
                 implied = 1/cf if cf > 1 else 0
                 verdict = "Value" if prob > implied+0.03 else ("Нет value" if prob < implied-0.03 else "На границе")
 
-            # сохранить
-            save_bet(self.sport, rec, line, cf, prob, kelly_stake, payout)
+            save_bet(self.sport, rec, line, cf, prob, kelly_stake if kelly_stake > 0 else stake, payout)
 
-            # вывод
-            self.big_num.text = "Тотал: {:.1f}  (К1 ведёт на {:.0f})".format(total, abs(diff)) if diff != 0 else "Тотал: {:.1f}".format(total)
-            self.profit_lbl.text = "Потенц. выигрыш: {:.0f}  |  Чистая: {:+.0f}".format(payout, profit if stake > 0 else 0)
-            self.kelly_lbl.text = "Келли: {:.0f} ({}% от банка)".format(kelly_stake, self.pct_cap)
-            det = "{} · Вер. {:.0f}% · EV {:+.3f}".format(rec, prob*100, prob*cf-1 if cf>1 else 0)
+            self.big_num.text = "Тотал: {:.1f}".format(total) + ("  (К1 ведёт {:.0f})".format(abs(diff)) if diff != 0 else "")
+            self.profit_lbl.text = "Выигрыш: {:.0f}  |  Чистая {:+.0f}".format(payout, profit)
+            self.profit_lbl.color = GREEN if profit >= 0 else LIVE_RED
+            self.kelly_lbl.text = "Келли: {:.0f} ({}%)".format(kelly_stake, self.pct_cap)
+            det = "{} · Вер. {:.0f}% · EV {:+.3f}".format(rec, prob*100, prob*cf-1 if cf > 1 else 0)
             if edge is not None:
                 det += " | Edge {:+.0f}п.п".format(edge*100)
             det += " | {}".format(verdict)
@@ -434,7 +435,7 @@ class MainScreen(BoxLayout):
             rtxt = "зашла" if result == "win" else ("не зашла" if result == "lose" else "-")
             card = Card(orientation="horizontal", size_hint_y=None, height=dp(58))
             card.set_card_color(self.card_color)
-            lbl = Label(text="{} · {} · Кф {:.2f} · {}\nСтавка {:.0f} → Выплата {:.0f} · {}".format(
+            lbl = Label(text="{} · {} · Кф {:.2f} · {}\nСтавка {:.0f} → {:.0f} · {}".format(
                 sport, market, cf, created, stake, payout, rtxt),
                 font_size=sp(11), color=self.text_color, halign="left", valign="middle", size_hint_x=1)
             lbl.bind(size=lambda *a: setattr(lbl, "text_size", (lbl.width, None)))
@@ -456,6 +457,9 @@ class MainScreen(BoxLayout):
                 self.bank = v
                 self.balance.text = "Банк: {:.0f}".format(v)
                 self.f_bank.txt.text = ""
+            p = self._num(self.f_pct.txt.text) if hasattr(self, "f_pct") else 0
+            if p > 0:
+                self.pct_cap = p
         except Exception:
             pass
 
